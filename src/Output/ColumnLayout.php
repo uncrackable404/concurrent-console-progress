@@ -2,6 +2,8 @@
 
 namespace Uncrackable404\ConcurrentConsoleProgress\Output;
 
+use Uncrackable404\ConcurrentConsoleProgress\Support\TerminalSanitizer;
+
 class ColumnLayout
 {
     private const COLUMN_SPACING = 2;
@@ -105,8 +107,6 @@ class ColumnLayout
 
     public static function width(string $value): int
     {
-        $value = preg_replace('/<[^>]+>/', '', $value) ?? $value;
-
-        return mb_strwidth($value);
+        return mb_strwidth(TerminalSanitizer::visibleText($value));
     }
 }

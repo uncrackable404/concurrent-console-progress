@@ -61,3 +61,25 @@ it('limits the number of trace lines in snapshot', function () {
     // Default limit is 5.
     expect(count($snapshot['trace']))->toBe(5);
 });
+
+it('sanitizes terminal control sequences and console markup in formatted messages', function () {
+    $exception = ChildProcessException::fromSnapshot([
+        'queue' => 'imports',
+        'error_context' => '<error>#42</error>' . "\e[31m",
+        'class' => 'RuntimeException',
+        'message' => 'Failed on <comment>secret</comment>' . "\e[2J",
+        'file' => '/srv/app/secret/Worker.php',
+        'line' => 88,
+        'trace' => [
+            '#0 /srv/app/secret/Worker.php:88 App\\Worker->run()',
+        ],
+    ]);
+
+    expect($exception->getMessage())->toContain('imports');
+    expect($exception->getMessage())->toContain('\<error\>#42\</error\>');
+    expect($exception->getMessage())->toContain('\<comment\>secret\</comment\>');
+    expect($exception->getMessage())->toContain('/srv/app/secret/Worker.php:88');
+    expect($exception->getMessage())->toContain('Trace:');
+    expect($exception->getMessage())->not->toContain("\e[31m");
+    expect($exception->getMessage())->not->toContain("\e[2J");
+});

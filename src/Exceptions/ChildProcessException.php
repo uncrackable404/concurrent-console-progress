@@ -4,6 +4,7 @@ namespace Uncrackable404\ConcurrentConsoleProgress\Exceptions;
 
 use RuntimeException;
 use Throwable;
+use Uncrackable404\ConcurrentConsoleProgress\Support\TerminalSanitizer;
 use Uncrackable404\ConcurrentConsoleProgress\Support\Value;
 
 class ChildProcessException extends RuntimeException
@@ -137,17 +138,20 @@ class ChildProcessException extends RuntimeException
     private function formatMessage(array $snapshot): string
     {
         $lines = [];
-        $context = array_filter([
-            $snapshot['queue'] ?? null,
-            $snapshot['error_context'] ?? null,
-        ], fn (mixed $value): bool => Value::filled($value));
+        $context = array_values(array_filter(array_map(
+            fn (mixed $value): string => TerminalSanitizer::text($value),
+            [
+                $snapshot['queue'] ?? null,
+                $snapshot['error_context'] ?? null,
+            ],
+        ), fn (string $value): bool => $value !== ''));
 
         if ($context !== []) {
-            $lines[] = implode(' ', array_map(fn (mixed $value): string => (string) $value, $context));
+            $lines[] = implode(' ', $context);
         }
 
         if (Value::filled($snapshot['class'] ?? null)) {
-            $lines[] = (string) $snapshot['class'];
+            $lines[] = TerminalSanitizer::text((string) $snapshot['class']);
         }
 
         if (Value::filled($snapshot['message'] ?? null)) {
@@ -155,13 +159,16 @@ class ChildProcessException extends RuntimeException
         }
 
         if (Value::filled($snapshot['file'] ?? null) && Value::filled($snapshot['line'] ?? null)) {
-            $lines[] = 'at ' . (string) $snapshot['file'] . ':' . (int) $snapshot['line'];
+            $lines[] = 'at '
+                . TerminalSanitizer::text((string) $snapshot['file'])
+                . ':'
+                . (int) $snapshot['line'];
         }
 
-        $trace = array_values(array_filter(
+        $trace = array_values(array_filter(array_map(
+            fn (mixed $line): string => is_string($line) ? TerminalSanitizer::text($line) : '',
             is_array($snapshot['trace'] ?? null) ? $snapshot['trace'] : [],
-            fn (mixed $line): bool => is_string($line) && $line !== '',
-        ));
+        ), fn (string $line): bool => $line !== ''));
 
         if ($trace !== []) {
             $lines[] = 'Trace:';
@@ -177,6 +184,7 @@ class ChildProcessException extends RuntimeException
     private function normalizeMessage(string $message): string
     {
         $message = preg_replace('/\s+/u', ' ', trim($message)) ?? trim($message);
+        $message = TerminalSanitizer::text($message);
 
         return mb_strimwidth($message, 0, 400, '... (truncated)');
     }
