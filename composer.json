@@ -31,5 +31,10 @@
                 "Uncrackable404\\ConcurrentConsoleProgress\\ConsoleProgressServiceProvider"
             ]
         }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
     }
 }

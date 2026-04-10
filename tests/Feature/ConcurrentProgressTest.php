@@ -1,0 +1,725 @@
+<?php
+
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Output\OutputInterface;
+use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
+use Uncrackable404\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
+use Uncrackable404\ConcurrentConsoleProgress\Output\ProgressTableRenderer;
+use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+
+it('runs concurrent progress through the helper entrypoint', function () {
+    $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);
+    ConcurrentProgress::setOutput($output);
+
+    $results = concurrent(
+        queues: [],
+        tasks: [],
+        concurrency: 1,
+        process: fn (array $task): array => $task,
+    );
+
+    expect($results)->toBe([]);
+
+    ConcurrentProgress::setOutput(null);
+});
+
+it('redraws the full layout with Symfony cursor controls', function () {
+    $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);
+    ConcurrentProgress::setOutput($output);
+    $progress = new ConcurrentProgress;
+
+    setPrivateProperty($progress, 'renderer', new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'PROCESS'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'processed', 'label' => 'PROCESSED', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+        ],
+        footer: [],
+    ));
+    setPrivateProperty($progress, 'minSecondsBetweenRedraws', 0.0);
+
+    $rows = [
+        'cars' => [
+            'label' => 'cars',
+            'total' => 100,
+            'processed' => 0,
+            'tasks_completed' => 0,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ],
+        'articles' => [
+            'label' => 'articles',
+            'total' => 100,
+            'processed' => 0,
+            'tasks_completed' => 0,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ],
+    ];
+
+    invokePrivateMethod($progress, 'startLayout', $rows, []);
+
+    $initial = $output->fetch();
+
+    expect($initial)
+        ->toContain('PROCESS')
+        ->toContain('cars')
+        ->toContain('articles')
+        ->toContain('TOTAL')
+        ->toContain('░');
+
+    $rows['cars']['processed'] = 50;
+    $rows['cars']['tasks_completed'] = 1;
+
+    invokePrivateMethod($progress, 'updateLayout', $rows, [], false);
+
+    $delta = $output->fetch();
+
+    expect($delta)
+        ->toContain("\x1b[")
+        ->toContain("\x1b[0J")
+        ->toContain('50 / 100')
+        ->toContain('1 / 2')
+        ->toContain('TOTAL')
+        ->toContain('▓');
+
+    ConcurrentProgress::setOutput(null);
+});
+
+it('throttles intermediate redraws but always renders the final frame', function () {
+    $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);
+    ConcurrentProgress::setOutput($output);
+    $progress = new ConcurrentProgress;
+    setPrivateProperty($progress, 'renderer', new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'PROCESS'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'processed', 'label' => 'PROCESSED', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+        ],
+        footer: [],
+    ));
+    setPrivateProperty($progress, 'minSecondsBetweenRedraws', 60.0);
+
+    $rows = [
+        'cars' => [
+            'label' => 'cars',
+            'total' => 100,
+            'processed' => 0,
+            'tasks_completed' => 0,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ],
+    ];
+
+    invokePrivateMethod($progress, 'startLayout', $rows, []);
+    $output->fetch();
+
+    $rows['cars']['processed'] = 50;
+    $rows['cars']['tasks_completed'] = 1;
+
+    invokePrivateMethod($progress, 'updateLayout', $rows, [], false);
+
+    expect($output->fetch())->toBe('');
+
+    $rows['cars']['processed'] = 100;
+    $rows['cars']['tasks_completed'] = 2;
+    $rows['cars']['completed'] = true;
+
+    invokePrivateMethod($progress, 'updateLayout', $rows, [], true);
+
+    expect($output->fetch())
+        ->toContain('100 / 100')
+        ->toContain('2 / 2');
+
+    ConcurrentProgress::setOutput(null);
+});
+
+it('performs a full redraw when the table layout changes', function () {
+    $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);
+    ConcurrentProgress::setOutput($output);
+    $progress = new ConcurrentProgress;
+    setPrivateProperty($progress, 'renderer', new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'PROCESS'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'processed', 'label' => 'PROCESSED', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+        ],
+        footer: [],
+    ));
+    setPrivateProperty($progress, 'minSecondsBetweenRedraws', 0.0);
+
+    $rows = [
+        'cars' => [
+            'label' => 'cars',
+            'total' => 100,
+            'processed' => 0,
+            'tasks_completed' => 0,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ],
+    ];
+
+    invokePrivateMethod($progress, 'startLayout', $rows, []);
+    $output->fetch();
+
+    $rows['cars']['label'] = 'case-histories';
+    $rows['cars']['processed'] = 100;
+    $rows['cars']['tasks_completed'] = 2;
+    $rows['cars']['completed'] = true;
+
+    invokePrivateMethod($progress, 'updateLayout', $rows, [], true);
+
+    $delta = $output->fetch();
+
+    expect($delta)
+        ->toContain("\x1b[0J")
+        ->toContain('case-histories')
+        ->toContain('TOTAL');
+
+    ConcurrentProgress::setOutput(null);
+});
+
+it('renders the failed row in red before bubbling the failure', function () {
+    $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);
+    ConcurrentProgress::setOutput($output);
+    $progress = new ConcurrentProgress;
+    setPrivateProperty($progress, 'renderer', new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'PROCESS'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'processed', 'label' => 'PROCESSED', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+        ],
+        footer: [],
+    ));
+    setPrivateProperty($progress, 'minSecondsBetweenRedraws', 60.0);
+
+    $rows = [
+        'cars' => [
+            'label' => 'cars',
+            'total' => 100,
+            'processed' => 0,
+            'tasks_completed' => 0,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ],
+    ];
+
+    invokePrivateMethod($progress, 'startLayout', $rows, []);
+    $output->fetch();
+
+    $failureReason = invokePrivateMethod($progress, 'applyResultAndRender', $rows, [], [
+        'queue' => 'cars',
+        'steps' => 50,
+        'advance' => 0,
+        'meta' => [],
+        'global' => [],
+        'failed' => true,
+        'exception' => [
+            'queue' => 'cars',
+            'error_context' => 'offset 22500',
+            'class' => RuntimeException::class,
+            'message' => 'Something went wrong',
+            'file' => '/tmp/failure.php',
+            'line' => 42,
+            'trace' => [
+                '#0 /tmp/failure.php:42 ImportDatabase::handle',
+            ],
+        ],
+    ]);
+
+    $delta = $output->fetch();
+
+    expect($failureReason)->toBeInstanceOf(ChildProcessException::class);
+    expect($failureReason->getMessage())
+        ->toContain('cars offset 22500')
+        ->toContain(RuntimeException::class)
+        ->toContain('at /tmp/failure.php:42');
+    expect($delta)
+        ->not->toBe('')
+        ->toContain("\x1b[31m")
+        ->toContain('cars')
+        ->toContain('1 / 2');
+
+    ConcurrentProgress::setOutput(null);
+});
+
+it('creates a serializable exception snapshot from a trace containing closures', function () {
+    $progress = new ConcurrentProgress(new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true));
+    $exception = exceptionWithCallbackTrace();
+
+    $snapshot = ChildProcessException::snapshotException([
+        'queue' => 'cars',
+        'error_context' => 'offset 22500',
+    ], $exception);
+
+    $serializedSnapshot = serialize($snapshot);
+
+    expect($serializedSnapshot)->toBeString();
+    expect($snapshot['class'])->toBe(\RuntimeException::class);
+    expect($snapshot['message'])->toBe('Request failed');
+    expect($snapshot['file'])->toBe(__FILE__);
+    expect($snapshot['line'])->toBeInt();
+    expect(implode(PHP_EOL, $snapshot['trace']))
+        ->toContain(__FILE__)
+        ->not->toContain('Closure::__set_state');
+});
+
+it('truncates long child process error messages while preserving the original location', function () {
+    $exception = ChildProcessException::fromSnapshot([
+        'queue' => 'cars',
+        'error_context' => 'offset 22500',
+        'class' => 'Illuminate\Http\Client\RequestException',
+        'message' => str_repeat('Gateway timeout ', 40),
+        'file' => '/tmp/ImportDatabase.php',
+        'line' => 136,
+        'trace' => [
+            '#0 /tmp/ImportDatabase.php:136 ImportDatabase::processBatch',
+            '#1 /tmp/ImportDatabase.php:92 ImportDatabase::handle',
+        ],
+    ]);
+
+    expect($exception->getMessage())
+        ->toContain('cars offset 22500')
+        ->toContain('Illuminate\Http\Client\RequestException')
+        ->toContain('at /tmp/ImportDatabase.php:136')
+        ->toContain('Trace:')
+        ->toContain('... (truncated)');
+});
+
+it('uses a fixed progress bar width of 20 characters', function () {
+    $renderer = new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'PROCESS'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'processed', 'label' => 'PROCESSED', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+        ],
+        footer: [],
+    );
+
+    $initialFrame = $renderer->render([
+        'cars' => [
+            'label' => 'cars',
+            'total' => 1000,
+            'processed' => 0,
+            'tasks_completed' => 0,
+            'tasks_total' => 10,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ],
+    ], [], [
+        'processed' => 0,
+        'total' => 1000,
+        'elapsed' => 0,
+        'eta' => null,
+        'completed' => false,
+    ]);
+
+    $updatedFrame = $renderer->render([
+        'cars' => [
+            'label' => 'cars',
+            'total' => 1000,
+            'processed' => 1000,
+            'tasks_completed' => 10,
+            'tasks_total' => 10,
+            'meta' => [],
+            'failed' => false,
+            'completed' => true,
+        ],
+    ], [], [
+        'processed' => 1000,
+        'total' => 1000,
+        'elapsed' => 1,
+        'eta' => 0,
+        'completed' => true,
+    ]);
+
+    preg_match('/\[(?<progress>[^\]]+)\]/u', $initialFrame, $initialMatch);
+    preg_match('/\[(?<progress>[^\]]+)\]/u', $updatedFrame, $updatedMatch);
+
+    expect($initialMatch['progress'] ?? null)->not->toBeNull();
+    expect($updatedMatch['progress'] ?? null)->not->toBeNull();
+    expect(mb_strwidth($initialMatch['progress']))->toBe(20);
+    expect(mb_strwidth($updatedMatch['progress']))->toBe(20);
+    expect($initialMatch['progress'])->toContain('░');
+    expect($updatedMatch['progress'])->toContain('▓');
+});
+
+it('renders neutral rows in gray', function () {
+    $renderer = new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'PROCESS'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'processed', 'label' => 'PROCESSED', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+        ],
+        footer: [],
+    );
+
+    $frame = $renderer->render([
+        'cars' => [
+            'label' => 'cars',
+            'total' => 100,
+            'processed' => 0,
+            'tasks_completed' => 0,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ],
+    ], [], [
+        'processed' => 0,
+        'total' => 100,
+        'elapsed' => 0,
+        'eta' => null,
+        'completed' => false,
+    ]);
+
+    expect($frame)
+        ->toContain('·  cars')
+        ->toContain('<fg=gray>');
+});
+
+it('omits the processed default column when it duplicates tasks', function () {
+    $progress = new ConcurrentProgress(new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true));
+
+    $columns = invokePrivateMethod($progress, 'normalizeColumns', [], [
+        'cars' => ['label' => 'cars', 'total' => 2],
+        'articles' => ['label' => 'articles', 'total' => 1],
+    ], [
+        ['queue' => 'cars', 'steps' => 1],
+        ['queue' => 'cars', 'steps' => 1],
+        ['queue' => 'articles', 'steps' => 1],
+    ]);
+
+    expect(array_column($columns, 'key'))
+        ->toBe(['label', 'progress', 'percent', 'tasks']);
+});
+
+it('keeps the processed default column when it differs from tasks', function () {
+    $progress = new ConcurrentProgress(new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true));
+
+    $columns = invokePrivateMethod($progress, 'normalizeColumns', [], [
+        'cars' => ['label' => 'cars', 'total' => 500],
+    ], [
+        ['queue' => 'cars', 'steps' => 500],
+    ]);
+
+    expect(array_column($columns, 'key'))
+        ->toBe(['label', 'progress', 'percent', 'processed', 'tasks']);
+});
+
+it('merges custom columns into the default columns', function () {
+    $progress = new ConcurrentProgress(new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true));
+
+    $columns = invokePrivateMethod($progress, 'normalizeColumns', [
+        ['key' => 'files', 'label' => 'WITH FILES', 'align' => 'right'],
+        ['key' => 'processed', 'label' => 'DONE', 'align' => 'right'],
+    ], [
+        'cars' => ['label' => 'cars', 'total' => 500],
+    ], [
+        ['queue' => 'cars', 'steps' => 500],
+    ]);
+
+    expect(array_column($columns, 'key'))
+        ->toBe(['label', 'progress', 'percent', 'processed', 'tasks', 'files']);
+    expect($columns[3]['label'])->toBe('DONE');
+    expect($columns[5]['label'])->toBe('WITH FILES');
+});
+
+it('merges custom footer items into the default footer', function () {
+    $progress = new ConcurrentProgress(new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true));
+
+    $footer = invokePrivateMethod($progress, 'normalizeFooter', [
+        ['key' => 'rl', 'label' => 'CREDITS'],
+        ['key' => 'eta', 'label' => 'REMAINING'],
+    ]);
+
+    expect(array_column($footer, 'key'))
+        ->toBe(['elapsed', 'eta', 'rl']);
+    expect($footer[1]['label'])->toBe('REMAINING');
+    expect($footer[2]['label'])->toBe('CREDITS');
+});
+
+it('keeps expanded columns stable across subsequent frames', function () {
+    $renderer = new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'PROCESS'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'processed', 'label' => 'PROCESSED', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+        ],
+        footer: [],
+    );
+
+    $initialFrame = $renderer->render([
+        'cars' => [
+            'label' => 'cars',
+            'total' => 100,
+            'processed' => 0,
+            'tasks_completed' => 0,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ],
+    ], [], [
+        'processed' => 0,
+        'total' => 100,
+        'elapsed' => 0,
+        'eta' => null,
+        'completed' => false,
+    ]);
+
+    $expandedFrame = $renderer->render([
+        'cars' => [
+            'label' => 'case-histories',
+            'total' => 100,
+            'processed' => 100,
+            'tasks_completed' => 2,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => true,
+        ],
+    ], [], [
+        'processed' => 100,
+        'total' => 100,
+        'elapsed' => 1,
+        'eta' => 0,
+        'completed' => true,
+    ]);
+
+    $stableFrame = $renderer->render([
+        'cars' => [
+            'label' => 'cars',
+            'total' => 100,
+            'processed' => 50,
+            'tasks_completed' => 1,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ],
+    ], [], [
+        'processed' => 50,
+        'total' => 100,
+        'elapsed' => 1,
+        'eta' => 1,
+        'completed' => false,
+    ]);
+
+    expect(progressColumnOffset($expandedFrame, 'case-histories'))
+        ->toBeGreaterThan(progressColumnOffset($initialFrame, 'cars'));
+    expect(progressColumnOffset($stableFrame, 'cars'))
+        ->toBe(progressColumnOffset($expandedFrame, 'case-histories'));
+});
+
+it('keeps sticky widths within the terminal budget after multiple expansions', function () {
+    $renderer = new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'PROCESS'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'processed', 'label' => 'PROCESSED', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+            ['key' => 'updated', 'label' => 'UPDATED', 'align' => 'right'],
+            ['key' => 'files', 'label' => 'FILES', 'align' => 'right'],
+        ],
+        footer: [
+            ['key' => 'elapsed', 'label' => 'ELAPSED'],
+            ['key' => 'eta', 'label' => 'ETA'],
+            ['key' => 'credits', 'label' => 'CREDITS'],
+        ],
+    );
+
+    $renderer->render([
+        'cars' => [
+            'label' => 'case-histories',
+            'total' => 102,
+            'processed' => 102,
+            'tasks_completed' => 1,
+            'tasks_total' => 1,
+            'meta' => ['updated' => 0, 'files' => 24],
+            'failed' => false,
+            'completed' => true,
+        ],
+    ], ['credits' => 9784], [
+        'processed' => 102,
+        'total' => 102,
+        'elapsed' => 1,
+        'eta' => 0,
+        'completed' => true,
+    ]);
+
+    $frame = $renderer->render([
+        'cars' => [
+            'label' => 'connections',
+            'total' => 115892,
+            'processed' => 2000,
+            'tasks_completed' => 4,
+            'tasks_total' => 232,
+            'meta' => ['updated' => 0, 'files' => 1061],
+            'failed' => false,
+            'completed' => false,
+        ],
+        'articles' => [
+            'label' => 'race-numbers',
+            'total' => 1312,
+            'processed' => 0,
+            'tasks_completed' => 0,
+            'tasks_total' => 3,
+            'meta' => ['updated' => null, 'files' => null],
+            'failed' => false,
+            'completed' => false,
+        ],
+    ], ['credits' => 9784], [
+        'processed' => 2000,
+        'total' => 117204,
+        'elapsed' => 21,
+        'eta' => 480,
+        'completed' => false,
+    ]);
+
+    $availableWidth = max((new Symfony\Component\Console\Terminal)->getWidth() - 1, 20);
+
+    foreach (cleanConsoleLines($frame) as $line) {
+        expect(mb_strwidth($line))->toBeLessThanOrEqual($availableWidth);
+    }
+});
+
+it('clips queue rows to the available terminal height', function () {
+    $renderer = new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'PROCESS'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'processed', 'label' => 'PROCESSED', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+        ],
+        footer: [
+            ['key' => 'elapsed', 'label' => 'ELAPSED'],
+            ['key' => 'eta', 'label' => 'ETA'],
+        ],
+    );
+
+    $rows = [];
+
+    foreach (range(1, 6) as $index) {
+        $rows['queue-' . $index] = [
+            'label' => 'queue-' . $index,
+            'total' => 100,
+            'processed' => $index === 6 ? 50 : 0,
+            'tasks_completed' => $index === 6 ? 1 : 0,
+            'tasks_total' => 2,
+            'meta' => [],
+            'failed' => false,
+            'completed' => false,
+        ];
+    }
+
+    $tableRows = invokePrivateMethod(
+        $renderer,
+        'tableRows',
+        $rows,
+        [],
+        [
+            'processed' => 50,
+            'total' => 600,
+            'elapsed' => 10,
+            'eta' => 100,
+            'completed' => false,
+        ],
+        20,
+        6,
+    );
+
+    expect($tableRows)->toHaveCount(5);
+    expect(implode(' ', $tableRows[0]['cells']))->toContain('queue-1');
+    expect(implode(' ', $tableRows[1]['cells']))->toContain('queue-6');
+    expect(implode(' ', $tableRows[2]['cells']))->toContain('TOTAL');
+    expect(implode(' ', $tableRows[3]['cells']))->toContain('ELAPSED');
+    expect(implode(' ', $tableRows[4]['cells']))->toContain('ETA');
+});
+
+function invokePrivateMethod(object $target, string $method, mixed ...$arguments): mixed
+{
+    return (function (mixed ...$arguments) use ($method): mixed {
+        return $this->{$method}(...$arguments);
+    })->call($target, ...$arguments);
+}
+
+function setPrivateProperty(object $target, string $property, mixed $value): void
+{
+    (function (mixed $value) use ($property): void {
+        $this->{$property} = $value;
+    })->call($target, $value);
+}
+
+function exceptionWithCallbackTrace(): \RuntimeException
+{
+    try {
+        throwExceptionFromCallbackTrace(function (): void {});
+    } catch (\RuntimeException $exception) {
+        return $exception;
+    }
+
+    throw new \RuntimeException('Failed to create test exception');
+}
+
+function throwExceptionFromCallbackTrace(\Closure $callback): void
+{
+    throw new \RuntimeException('Request failed');
+}
+
+function cleanConsoleLines(string $frame): array
+{
+    return array_map(
+        fn (string $line): string => preg_replace('/<[^>]+>/', '', $line) ?? $line,
+        explode(PHP_EOL, $frame),
+    );
+}
+
+function cleanConsoleLine(string $frame, string $needle): string
+{
+    foreach (cleanConsoleLines($frame) as $line) {
+        if (str_contains($line, $needle)) {
+            return $line;
+        }
+    }
+
+    throw new RuntimeException('Unable to find console line for needle: ' . $needle);
+}
+
+function progressColumnOffset(string $frame, string $needle): int
+{
+    $offset = mb_strpos(cleanConsoleLine($frame, $needle), '[');
+
+    if ($offset === false) {
+        throw new RuntimeException('Unable to find progress bar for needle: ' . $needle);
+    }
+
+    return $offset;
+}
