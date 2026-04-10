@@ -2,9 +2,7 @@
 
 A dashboard for monitoring concurrent progress in PHP console applications. Ideal for resource-intensive tasks (imports, API calls) distributed across multiple simultaneous queues.
 
-Inspired by **Laravel Prompts** and powered by [**spatie/fork**](https://github.com/spatie/fork).
-
----
+Inspired by [**laravel/prompts**](https://github.com/laravel/prompts) and powered by [**spatie/fork**](https://github.com/spatie/fork).
 
 ## Installation
 
@@ -118,8 +116,6 @@ This package acts as a bridge between the [**spatie/fork**](https://github.com/s
 - **Process Isolation**: It uses `pcntl_fork` to run each task in its own isolated child process. This means a crash in one task won't affect others, and memory leaks are avoided since each process exits after completion.
 - **Real-time Monitoring**: As tasks complete and send their results back to the parent process, the dashboard updates the table in real-time, providing feedback on progress, ETA, and custom metadata.
 - **Fail-fast**: If a critical error occurs or if you interrupt the process (Ctrl+C), it gracefully shuts down child processes.
-
----
 
 ## License
 
