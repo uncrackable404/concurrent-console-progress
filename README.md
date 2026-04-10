@@ -1,6 +1,14 @@
 # Concurrent Console Progress
 
-A dashboard for monitoring concurrent progress in PHP console applications. Ideal for resource-intensive tasks (imports, API calls) distributed across multiple simultaneous queues.
+![Concurrent Console Progress Preview](art/preview.png)
+
+[![Total Downloads](https://img.shields.io/packagist/dt/uncrackable404/concurrent-console-progress)](https://packagist.org/packages/uncrackable404/concurrent-console-progress)
+[![Latest Stable Version](https://img.shields.io/packagist/v/uncrackable404/concurrent-console-progress)](https://packagist.org/packages/uncrackable404/concurrent-console-progress)
+[![License](https://img.shields.io/packagist/l/uncrackable404/concurrent-console-progress)](https://packagist.org/packages/uncrackable404/concurrent-console-progress)
+
+## Introduction
+
+**Concurrent Console Progress** is a dashboard for monitoring concurrent progress in PHP console applications. Ideal for resource-intensive tasks (imports, API calls) distributed across multiple simultaneous queues.
 
 Inspired by [**laravel/prompts**](https://github.com/laravel/prompts) and powered by [**spatie/fork**](https://github.com/spatie/fork).
 
@@ -93,7 +101,7 @@ $results = $progress->run(
 );
 ```
 
-### Laravel Integration
+## Laravel Integration
 
 The package comes with a `ConsoleProgressServiceProvider` that automatically configures the output for Laravel commands.
 

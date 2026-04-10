@@ -91,3 +91,4 @@ it('formats non-numeric values correctly', function () {
     expect(invokePrivateMethod($renderer, 'formatValue', 1234.56))->toBe('1,235');
     expect(invokePrivateMethod($renderer, 'formatValue', null))->toBe('-');
 });
+
