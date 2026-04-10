@@ -1,0 +1,35 @@
+{
+    "name": "uncrackable404/concurrent-console-progress",
+    "description": "Concurrent progress dashboard for PHP console applications that need to render and monitor multiple concurrent tasks in a single live terminal view.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "ext-mbstring": "*",
+        "spatie/fork": "^1.2",
+        "symfony/console": "^8.0"
+    },
+    "require-dev": {
+        "pestphp/pest": "^4.0"
+    },
+    "autoload": {
+        "files": [
+            "src/helpers.php"
+        ],
+        "psr-4": {
+            "Uncrackable404\\ConcurrentConsoleProgress\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Uncrackable404\\ConcurrentConsoleProgress\\ConsoleProgressServiceProvider"
+            ]
+        }
+    }
+}
