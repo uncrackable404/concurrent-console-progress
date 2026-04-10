@@ -92,3 +92,53 @@ it('formats non-numeric values correctly', function () {
     expect(invokePrivateMethod($renderer, 'formatValue', null))->toBe('-');
 });
 
+it('renders queue labels meta and footer values as literal terminal-safe text', function () {
+    $renderer = new ProgressTableRenderer(
+        columns: [
+            ['key' => 'label', 'label' => 'QUEUE'],
+            ['key' => 'progress', 'label' => 'PROGRESS'],
+            ['key' => 'percent', 'label' => '%', 'align' => 'right'],
+            ['key' => 'tasks', 'label' => 'TASKS', 'align' => 'right'],
+            ['key' => 'meta', 'label' => 'META'],
+        ],
+        footer: [
+            ['key' => 'custom', 'label' => 'CUSTOM'],
+        ],
+        terminal: new class extends Terminal {
+            public function getWidth(): int { return 200; }
+            public function getHeight(): int { return 40; }
+        }
+    );
+
+    $rendered = $renderer->render(
+        rows: [[
+            'label' => '<error>danger</error>' . "\e[31m",
+            'processed' => 1,
+            'total' => 4,
+            'tasks_completed' => 1,
+            'tasks_total' => 2,
+            'meta' => [
+                'meta' => '<fg=red>meta</>' . "\e]8;;https://example.test\x07X\e]8;;\x07",
+            ],
+            'failed' => false,
+            'completed' => false,
+        ]],
+        global: [
+            'custom' => '<comment>footer</comment>' . "\e[2J",
+        ],
+        session: [
+            'processed' => 1,
+            'total' => 4,
+            'elapsed' => 1,
+            'eta' => 3,
+            'completed' => false,
+        ],
+    );
+
+    expect($rendered)->toContain('\<error\>danger\</error\>');
+    expect($rendered)->toContain('\<fg=red\>meta\</\>');
+    expect($rendered)->toContain('\<comment\>footer');
+    expect($rendered)->not->toContain("\e[31m");
+    expect($rendered)->not->toContain("\e]8;;https://example.test\x07");
+    expect($rendered)->not->toContain("\e[2J");
+});

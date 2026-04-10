@@ -34,3 +34,8 @@ it('uses explicit width as minimum width', function () {
     
     expect($method->invoke($layout, $columns[0]))->toBe(10);
 });
+
+it('measures escaped console markup as literal text', function () {
+    expect(ColumnLayout::width('\<error\>danger\</error\>'))
+        ->toBe(mb_strwidth('<error>danger</error>'));
+});

@@ -3,6 +3,7 @@
 namespace Uncrackable404\ConcurrentConsoleProgress\Output;
 
 use Symfony\Component\Console\Terminal;
+use Uncrackable404\ConcurrentConsoleProgress\Support\TerminalSanitizer;
 use Uncrackable404\ConcurrentConsoleProgress\Support\Value;
 
 class ProgressTableRenderer
@@ -200,7 +201,7 @@ class ProgressTableRenderer
         $ratio = $total === 0 ? 1 : min($processed / $total, 1);
 
         return match ($key) {
-            'label' => (string) ($row['label'] ?? ''),
+            'label' => TerminalSanitizer::text($row['label'] ?? ''),
             'progress' => $this->progressBar($processed, $total, $progressBarWidth),
             'percent' => round($ratio * 100) . '%',
             'processed' => number_format($processed) . ' / ' . number_format($total),
@@ -311,7 +312,7 @@ class ProgressTableRenderer
             return number_format($value);
         }
 
-        return (string) $value;
+        return TerminalSanitizer::text($value);
     }
 
     private function formatEta(mixed $seconds): string

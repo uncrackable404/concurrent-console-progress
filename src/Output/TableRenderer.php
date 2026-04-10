@@ -3,6 +3,7 @@
 namespace Uncrackable404\ConcurrentConsoleProgress\Output;
 
 use Symfony\Component\Console\Terminal;
+use Uncrackable404\ConcurrentConsoleProgress\Support\TerminalSanitizer;
 use Uncrackable404\ConcurrentConsoleProgress\Support\Value;
 
 class TableRenderer
@@ -80,13 +81,7 @@ class TableRenderer
 
     private function trimToWidth(string $value, int $width): string
     {
-        if ($width <= 0) {
-            return '';
-        }
-
-        $plainValue = preg_replace('/<[^>]+>/', '', $value) ?? $value;
-
-        return mb_strimwidth($plainValue, 0, $width, '');
+        return TerminalSanitizer::trimVisibleText($value, $width);
     }
 
 }
