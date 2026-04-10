@@ -69,11 +69,7 @@ class ConcurrentProgress
             ->before($before);
 
         $fork->after(
-            parent: function (mixed $result) use (&$rows, &$global, $fork): void {
-                if (is_array($result) === false) {
-                    return;
-                }
-
+            parent: function (array $result) use (&$rows, &$global, $fork): void {
                 $failureReason = $this->applyResultAndRender($rows, $global, $result);
 
                 if ($failureReason !== null) {

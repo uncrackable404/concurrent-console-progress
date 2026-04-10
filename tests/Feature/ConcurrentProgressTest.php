@@ -272,13 +272,14 @@ it('creates a serializable exception snapshot from a trace containing closures',
 
     $serializedSnapshot = serialize($snapshot);
 
+    $pestFile = realpath(__DIR__ . '/../Pest.php');
     expect($serializedSnapshot)->toBeString();
     expect($snapshot['class'])->toBe(\RuntimeException::class);
     expect($snapshot['message'])->toBe('Request failed');
-    expect($snapshot['file'])->toBe(__FILE__);
+    expect($snapshot['file'])->toBe($pestFile);
     expect($snapshot['line'])->toBeInt();
     expect(implode(PHP_EOL, $snapshot['trace']))
-        ->toContain(__FILE__)
+        ->toContain($pestFile)
         ->not->toContain('Closure::__set_state');
 });
 
@@ -656,70 +657,196 @@ it('clips queue rows to the available terminal height', function () {
         6,
     );
 
-    expect($tableRows)->toHaveCount(5);
-    expect(implode(' ', $tableRows[0]['cells']))->toContain('queue-1');
-    expect(implode(' ', $tableRows[1]['cells']))->toContain('queue-6');
-    expect(implode(' ', $tableRows[2]['cells']))->toContain('TOTAL');
-    expect(implode(' ', $tableRows[3]['cells']))->toContain('ELAPSED');
-    expect(implode(' ', $tableRows[4]['cells']))->toContain('ETA');
+    expect($tableRows)->toHaveCount(5)
+        ->and(implode(' ', $tableRows[0]['cells']))->toContain('queue-1')
+        ->and(implode(' ', $tableRows[1]['cells']))->toContain('queue-6')
+        ->and(implode(' ', $tableRows[2]['cells']))->toContain('TOTAL')
+        ->and(implode(' ', $tableRows[3]['cells']))->toContain('ELAPSED')
+        ->and(implode(' ', $tableRows[4]['cells']))->toContain('ETA');
 });
 
-function invokePrivateMethod(object $target, string $method, mixed ...$arguments): mixed
-{
-    return (function (mixed ...$arguments) use ($method): mixed {
-        return $this->{$method}(...$arguments);
-    })->call($target, ...$arguments);
-}
+it('wraps and runs a task directly', function () {
+    $progress = new ConcurrentProgress;
+    $task = ['queue' => 'cars', 'steps' => 10, 'error_context' => 'batch-1'];
 
-function setPrivateProperty(object $target, string $property, mixed $value): void
-{
-    (function (mixed $value) use ($property): void {
-        $this->{$property} = $value;
-    })->call($target, $value);
-}
+    $wrapper = invokePrivateMethod($progress, 'wrapTask', $task, function ($task) {
+        return ['advance' => 5, 'meta' => ['status' => 'halfway'], 'global' => ['overall' => 'starting']];
+    });
 
-function exceptionWithCallbackTrace(): \RuntimeException
-{
-    try {
-        throwExceptionFromCallbackTrace(function (): void {});
-    } catch (\RuntimeException $exception) {
-        return $exception;
-    }
+    $result = $wrapper();
 
-    throw new \RuntimeException('Failed to create test exception');
-}
+    expect($result)->toBe([
+        'queue' => 'cars',
+        'steps' => 10,
+        'advance' => 5,
+        'meta' => ['status' => 'halfway'],
+        'global' => ['overall' => 'starting'],
+        'error_context' => 'batch-1',
+        'failed' => false,
+    ]);
 
-function throwExceptionFromCallbackTrace(\Closure $callback): void
-{
-    throw new \RuntimeException('Request failed');
-}
+    $wrapperFailing = invokePrivateMethod($progress, 'wrapTask', $task, function ($task) {
+        throw new \RuntimeException('Processing failed');
+    });
 
-function cleanConsoleLines(string $frame): array
-{
-    return array_map(
-        fn (string $line): string => preg_replace('/<[^>]+>/', '', $line) ?? $line,
-        explode(PHP_EOL, $frame),
-    );
-}
+    $resultFailed = $wrapperFailing();
 
-function cleanConsoleLine(string $frame, string $needle): string
-{
-    foreach (cleanConsoleLines($frame) as $line) {
-        if (str_contains($line, $needle)) {
-            return $line;
-        }
-    }
+    expect($resultFailed)->toBeArray()
+        ->and($resultFailed['failed'])->toBeTrue()
+        ->and($resultFailed['exception'])->toBeArray()
+        ->and($resultFailed['exception']['message'])->toBe('Processing failed');
+});
 
-    throw new RuntimeException('Unable to find console line for needle: ' . $needle);
-}
+it('identifies redundant processed column correctly', function () {
+    $progress = new ConcurrentProgress;
 
-function progressColumnOffset(string $frame, string $needle): int
-{
-    $offset = mb_strpos(cleanConsoleLine($frame, $needle), '[');
+    $queues = ['cars' => ['label' => 'Cars', 'total' => 2]];
+    $tasks = [
+        ['queue' => 'cars', 'steps' => 1],
+        ['queue' => 'cars', 'steps' => 1],
+    ];
 
-    if ($offset === false) {
-        throw new RuntimeException('Unable to find progress bar for needle: ' . $needle);
-    }
+    expect(invokePrivateMethod($progress, 'processedColumnIsRedundant', $queues, $tasks))->toBeTrue();
 
-    return $offset;
-}
+    $tasksMismatch = [
+        ['queue' => 'cars', 'steps' => 2],
+    ];
+    // steps=2, taskCount=1. 2 != 1, returns false.
+    expect(invokePrivateMethod($progress, 'processedColumnIsRedundant', $queues, $tasksMismatch))->toBeFalse();
+
+    $queuesMismatch = ['cars' => ['label' => 'Cars', 'total' => 3]];
+    $tasksCorrect = [
+        ['queue' => 'cars', 'steps' => 1],
+        ['queue' => 'cars', 'steps' => 1],
+        ['queue' => 'cars', 'steps' => 1],
+    ];
+    // This is True.
+    expect(invokePrivateMethod($progress, 'processedColumnIsRedundant', $queuesMismatch, $tasksCorrect))->toBeTrue();
+
+    $queuesFinalMismatch = ['cars' => ['label' => 'Cars', 'total' => 4]];
+    // total=4, taskCount=3. returns false.
+    expect(invokePrivateMethod($progress, 'processedColumnIsRedundant', $queuesFinalMismatch, $tasksCorrect))->toBeFalse();
+});
+
+it('merges definitions while skipping invalid custom entries', function () {
+    $progress = new ConcurrentProgress;
+    $defaults = [['key' => 'label', 'label' => 'LABEL']];
+    $custom = [['label' => 'INVALID'], ['key' => 'label', 'label' => 'VALID'], ['key' => 'extra', 'label' => 'EXTRA']];
+
+    $merged = invokePrivateMethod($progress, 'mergeDefinitions', $defaults, $custom);
+
+    expect($merged)->toHaveCount(2)
+        ->and($merged[0]['label'])->toBe('VALID')
+        ->and($merged[1]['key'])->toBe('extra');
+});
+
+it('skips default definitions without keys during merge', function () {
+    $progress = new ConcurrentProgress;
+    $defaults = [['key' => 'label'], ['label' => 'NO_KEY']];
+    $custom = [['key' => 'extra']]; // Non-empty to bypass early return
+    $merged = invokePrivateMethod($progress, 'mergeDefinitions', $defaults, $custom);
+    expect($merged)->toHaveCount(2); // 'label' from defaults, 'extra' from custom. 'NO_KEY' skipped.
+});
+
+it('creates rows for undeclared queues and increments totals', function () {
+    $progress = new ConcurrentProgress;
+    $queues = ['declared' => ['label' => 'Declared', 'total' => 10]];
+    $tasks = [
+        ['queue' => 'declared', 'steps' => 5],
+        ['queue' => 'undeclared', 'steps' => 5],
+        ['queue' => 'undeclared', 'steps' => 3],
+    ];
+
+    $rows = invokePrivateMethod($progress, 'makeRows', $queues, $tasks);
+
+    expect($rows)->toHaveCount(2)
+        ->and($rows['declared']['total'])->toBe(10)
+        ->and($rows['undeclared']['total'])->toBe(8)
+        ->and($rows['undeclared']['tasks_total'])->toBe(2);
+});
+
+it('handles non-decorated output gracefully', function () {
+    $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, false); // isDecorated = false
+    ConcurrentProgress::setOutput($output);
+    $progress = new ConcurrentProgress;
+
+    invokePrivateMethod($progress, 'startLayout', [], []);
+    expect(getPrivateProperty($progress, 'cursor'))->toBeNull();
+
+    invokePrivateMethod($progress, 'updateLayout', [], [], false);
+    expect($output->fetch())->toBe('');
+
+    ConcurrentProgress::setOutput(null);
+});
+
+it('skips layout overwrite when lines are identical or cursor is missing', function () {
+    $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);
+    ConcurrentProgress::setOutput($output);
+    $progress = new ConcurrentProgress;
+    setPrivateProperty($progress, 'renderer', new ProgressTableRenderer([], []));
+
+    invokePrivateMethod($progress, 'startLayout', [], []);
+    $output->fetch(); // Clear buffer
+
+    setPrivateProperty($progress, 'lastFrame', ['line 1', 'line 2']);
+    invokePrivateMethod($progress, 'overwriteLayout', ['line 1', 'line 2']);
+
+    expect($output->fetch())->toBe('');
+
+    setPrivateProperty($progress, 'cursor', null);
+    invokePrivateMethod($progress, 'overwriteLayout', ['new line']);
+    expect($output->fetch())->toBe('');
+
+    ConcurrentProgress::setOutput(null);
+});
+
+it('skips redundant redraws based on time and content', function () {
+    $progress = new ConcurrentProgress;
+    setPrivateProperty($progress, 'lastFrame', ['same']);
+    setPrivateProperty($progress, 'lastRenderedAt', microtime(true));
+    setPrivateProperty($progress, 'minSecondsBetweenRedraws', 10.0);
+
+    expect(invokePrivateMethod($progress, 'shouldSkipRedraw', ['same']))->toBeTrue();
+    expect(invokePrivateMethod($progress, 'shouldSkipRedraw', ['different']))->toBeTrue();
+
+    setPrivateProperty($progress, 'lastRenderedAt', microtime(true) - 20.0);
+    expect(invokePrivateMethod($progress, 'shouldSkipRedraw', ['different']))->toBeFalse();
+});
+
+it('estimates ETA correctly', function () {
+    $progress = new ConcurrentProgress;
+
+    // Completed or empty
+    expect(invokePrivateMethod($progress, 'estimateEta', 100, 100, 10, true))->toBe(0);
+    expect(invokePrivateMethod($progress, 'estimateEta', 0, 0, 10))->toBe(0);
+
+    // Initial state
+    expect(invokePrivateMethod($progress, 'estimateEta', 0, 100, 0))->toBeNull();
+
+    // Normal case: 50 items in 10s = 5 items/s. Total 100. Remaining 50. ETA = 10s.
+    expect(invokePrivateMethod($progress, 'estimateEta', 50, 100, 10))->toBe(10);
+
+    // Negative items per second (should not happen but for coverage)
+    expect(invokePrivateMethod($progress, 'estimateEta', -1, 100, 10))->toBeNull();
+});
+
+it('merges row meta with non-numeric values and ignores unknown queues', function () {
+    $progress = new ConcurrentProgress;
+    $rows = ['cars' => ['meta' => ['speed' => 10, 'status' => 'waiting']]];
+
+    // Valid queue, non-numeric value
+    $meta = $rows['cars']['meta'];
+    $incoming = ['speed' => 5, 'status' => 'driving'];
+    (function ($incoming) use (&$meta) {
+        $this->mergeRowMeta($meta, $incoming);
+    })->call($progress, $incoming);
+
+    expect($meta['speed'])->toBe(15)
+        ->and($meta['status'])->toBe('driving');
+
+    // Unknown queue check in applyResult
+    $global = [];
+    invokePrivateMethod($progress, 'applyResult', $rows, $global, ['queue' => 'unknown']);
+    expect($rows)->not->toHaveKey('unknown');
+});
+

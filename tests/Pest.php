@@ -13,7 +13,7 @@ use Tests\TestCase;
 |
 */
 
-pest()->extend(TestCase::class)->in('Feature');
+pest()->extend(TestCase::class)->in('Feature', 'Unit');
 
 /*
 |--------------------------------------------------------------------------
@@ -41,7 +41,69 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+function getPrivateProperty(object $target, string $property): mixed
 {
-    // ..
+    return (function () use ($property): mixed {
+        return $this->{$property};
+    })->call($target);
+}
+
+function invokePrivateMethod(object $target, string $method, mixed ...$arguments): mixed
+{
+    return (function (mixed ...$arguments) use ($method): mixed {
+        return $this->{$method}(...$arguments);
+    })->call($target, ...$arguments);
+}
+
+function setPrivateProperty(object $target, string $property, mixed $value): void
+{
+    (function (mixed $value) use ($property): void {
+        $this->{$property} = $value;
+    })->call($target, $value);
+}
+
+function exceptionWithCallbackTrace(): \RuntimeException
+{
+    try {
+        throwExceptionFromCallbackTrace(function (): void {});
+    } catch (\RuntimeException $exception) {
+        return $exception;
+    }
+
+    throw new \RuntimeException('Failed to create test exception');
+}
+
+function throwExceptionFromCallbackTrace(\Closure $callback): void
+{
+    throw new \RuntimeException('Request failed');
+}
+
+function cleanConsoleLines(string $frame): array
+{
+    return array_map(
+        fn (string $line): string => preg_replace('/<[^>]+>/', '', $line) ?? $line,
+        explode(PHP_EOL, $frame),
+    );
+}
+
+function cleanConsoleLine(string $frame, string $needle): string
+{
+    foreach (cleanConsoleLines($frame) as $line) {
+        if (str_contains($line, $needle)) {
+            return $line;
+        }
+    }
+
+    throw new RuntimeException('Unable to find console line for needle: ' . $needle);
+}
+
+function progressColumnOffset(string $frame, string $needle): int
+{
+    $offset = mb_strpos(cleanConsoleLine($frame, $needle), '[');
+
+    if ($offset === false) {
+        throw new RuntimeException('Unable to find progress bar for needle: ' . $needle);
+    }
+
+    return $offset;
 }
