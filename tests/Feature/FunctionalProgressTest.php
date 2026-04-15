@@ -4,6 +4,7 @@ use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
 use Uncrackable404\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
+
 use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
 
 it('completes tasks successfully with real forking', function () {
@@ -18,7 +19,7 @@ it('completes tasks successfully with real forking', function () {
             ['queue' => 'cars', 'steps' => 1, 'id' => 1],
             ['queue' => 'cars', 'steps' => 1, 'id' => 2],
         ],
-        concurrency: 1,
+        concurrent: 1,
         process: function (array $task): array {
             return [
                 'advance' => 1,
@@ -31,7 +32,7 @@ it('completes tasks successfully with real forking', function () {
     expect($results)->toHaveCount(2)
         ->and($results[0]['meta']['processed_id'])->toBe(1)
         ->and($results[1]['meta']['processed_id'])->toBe(2);
-    
+
     $frame = $output->fetch();
     expect($frame)->toContain('Cars')
         ->toContain('2 / 2')
@@ -53,11 +54,12 @@ it('fails and stops early when a task throws an exception', function () {
                 ['queue' => 'cars', 'steps' => 1, 'id' => 1],
                 ['queue' => 'cars', 'steps' => 1, 'id' => 2],
             ],
-            concurrency: 1,
+            concurrent: 1,
             process: function (array $task): array {
                 if ($task['id'] === 1) {
                     throw new RuntimeException('Test failure');
                 }
+
                 return ['advance' => 1];
             },
         );
@@ -68,6 +70,80 @@ it('fails and stops early when a task throws an exception', function () {
 
     $frame = $output->fetch();
     expect($frame)->toContain("\x1b[31m"); // Red error row
+
+    ConcurrentProgress::setOutput(null);
+});
+
+it('runs tasks synchronously in the same process with concurrency 0', function () {
+    $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);
+    ConcurrentProgress::setOutput($output);
+
+    $parentPid = getmypid();
+    $pidsSeen = [];
+
+    $results = concurrent(
+        queues: [
+            'cars' => ['label' => 'Cars', 'total' => 2],
+        ],
+        tasks: [
+            ['queue' => 'cars', 'steps' => 1, 'id' => 1],
+            ['queue' => 'cars', 'steps' => 1, 'id' => 2],
+        ],
+        concurrent: 0,
+        process: function (array $task) use (&$pidsSeen): array {
+            $pidsSeen[] = getmypid();
+
+            return [
+                'advance' => 1,
+                'meta' => ['processed_id' => $task['id']],
+                'global' => ['last_id' => $task['id']],
+            ];
+        },
+    );
+
+    expect($results)->toHaveCount(2)
+        ->and($results[0]['meta']['processed_id'])->toBe(1)
+        ->and($results[1]['meta']['processed_id'])->toBe(2)
+        ->and($pidsSeen)->each->toBe($parentPid);
+
+    $frame = $output->fetch();
+    expect($frame)->toContain('Cars')
+        ->toContain('2 / 2')
+        ->toContain('100%');
+
+    ConcurrentProgress::setOutput(null);
+});
+
+it('fails fast synchronously when a task throws with concurrency 0', function () {
+    $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);
+    ConcurrentProgress::setOutput($output);
+
+    try {
+        concurrent(
+            queues: [
+                'cars' => ['label' => 'Cars', 'total' => 3],
+            ],
+            tasks: [
+                ['queue' => 'cars', 'steps' => 1, 'id' => 1],
+                ['queue' => 'cars', 'steps' => 1, 'id' => 2],
+                ['queue' => 'cars', 'steps' => 1, 'id' => 3],
+            ],
+            concurrent: 0,
+            process: function (array $task): array {
+                if ($task['id'] === 2) {
+                    throw new RuntimeException('Sync failure');
+                }
+
+                return ['advance' => 1];
+            },
+        );
+        $this->fail('Exception not thrown');
+    } catch (ChildProcessException $exception) {
+        expect($exception->getMessage())->toContain('Sync failure');
+    }
+
+    $frame = $output->fetch();
+    expect($frame)->toContain("\x1b[31m");
 
     ConcurrentProgress::setOutput(null);
 });

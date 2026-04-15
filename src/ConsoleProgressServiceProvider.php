@@ -2,9 +2,9 @@
 
 namespace Uncrackable404\ConcurrentConsoleProgress;
 
-use Illuminate\Support\Facades\Event;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Symfony\Component\Console\Output\OutputInterface;
 

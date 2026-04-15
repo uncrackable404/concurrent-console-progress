@@ -15,23 +15,39 @@ it('determines if a value is filled correctly', function () {
 });
 
 it('handles Stringable and Countable objects', function () {
-    $stringable = new class implements Stringable {
-        public function __toString(): string { return '  '; }
+    $stringable = new class implements Stringable
+    {
+        public function __toString(): string
+        {
+            return '  ';
+        }
     };
     expect(Value::filled($stringable))->toBeFalse();
 
-    $stringableFilled = new class implements Stringable {
-        public function __toString(): string { return 'hello'; }
+    $stringableFilled = new class implements Stringable
+    {
+        public function __toString(): string
+        {
+            return 'hello';
+        }
     };
     expect(Value::filled($stringableFilled))->toBeTrue();
 
-    $countable = new class implements Countable {
-        public function count(): int { return 0; }
+    $countable = new class implements Countable
+    {
+        public function count(): int
+        {
+            return 0;
+        }
     };
     expect(Value::filled($countable))->toBeFalse();
 
-    $countableFilled = new class implements Countable {
-        public function count(): int { return 1; }
+    $countableFilled = new class implements Countable
+    {
+        public function count(): int
+        {
+            return 1;
+        }
     };
     expect(Value::filled($countableFilled))->toBeTrue();
 });

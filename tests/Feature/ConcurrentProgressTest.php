@@ -2,9 +2,11 @@
 
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Terminal;
 use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
 use Uncrackable404\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
 use Uncrackable404\ConcurrentConsoleProgress\Output\ProgressTableRenderer;
+
 use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
 
 it('runs concurrent progress through the helper entrypoint', function () {
@@ -14,7 +16,7 @@ it('runs concurrent progress through the helper entrypoint', function () {
     $results = concurrent(
         queues: [],
         tasks: [],
-        concurrency: 1,
+        concurrent: 1,
         process: fn (array $task): array => $task,
     );
 
@@ -274,7 +276,7 @@ it('creates a serializable exception snapshot from a trace containing closures',
 
     $pestFile = realpath(__DIR__ . '/../Pest.php');
     expect($serializedSnapshot)->toBeString();
-    expect($snapshot['class'])->toBe(\RuntimeException::class);
+    expect($snapshot['class'])->toBe(RuntimeException::class);
     expect($snapshot['message'])->toBe('Request failed');
     expect($snapshot['file'])->toBe($pestFile);
     expect($snapshot['line'])->toBeInt();
@@ -604,7 +606,7 @@ it('keeps sticky widths within the terminal budget after multiple expansions', f
         'completed' => false,
     ]);
 
-    $availableWidth = max((new Symfony\Component\Console\Terminal)->getWidth() - 1, 20);
+    $availableWidth = max((new Terminal)->getWidth() - 1, 20);
 
     foreach (cleanConsoleLines($frame) as $line) {
         expect(mb_strwidth($line))->toBeLessThanOrEqual($availableWidth);
@@ -686,7 +688,7 @@ it('wraps and runs a task directly', function () {
     ]);
 
     $wrapperFailing = invokePrivateMethod($progress, 'wrapTask', $task, function ($task) {
-        throw new \RuntimeException('Processing failed');
+        throw new RuntimeException('Processing failed');
     });
 
     $resultFailed = $wrapperFailing();
@@ -849,4 +851,3 @@ it('merges row meta with non-numeric values and ignores unknown queues', functio
     invokePrivateMethod($progress, 'applyResult', $rows, $global, ['queue' => 'unknown']);
     expect($rows)->not->toHaveKey('unknown');
 });
-

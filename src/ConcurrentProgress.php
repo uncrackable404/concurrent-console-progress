@@ -45,7 +45,7 @@ class ConcurrentProgress
     public function run(
         array $queues,
         array $tasks,
-        int $concurrency,
+        int $concurrent,
         Closure $process,
         array $columns = [],
         array $footer = [],
@@ -59,13 +59,17 @@ class ConcurrentProgress
         $footer = $this->normalizeFooter($footer);
         $this->renderer = new ProgressTableRenderer($columns, $footer);
 
+        if ($concurrent < 1) {
+            return $this->runSynchronously($queues, $tasks, $process, $before);
+        }
+
         $rows = $this->makeRows($queues, $tasks);
         $global = [];
 
         $this->startLayout($rows, $global);
 
         $fork = (new FailFastFork)
-            ->concurrent(max(1, $concurrency))
+            ->concurrent(max(1, $concurrent))
             ->before($before);
 
         $fork->after(
@@ -96,6 +100,45 @@ class ConcurrentProgress
         return $results;
     }
 
+    private function runSynchronously(
+        array $queues,
+        array $tasks,
+        Closure $process,
+        ?Closure $before,
+    ): array {
+        $rows = $this->makeRows($queues, $tasks);
+        $global = [];
+
+        $this->startLayout($rows, $global);
+
+        $results = [];
+
+        foreach ($tasks as $task) {
+            if ($before !== null) {
+                $before();
+            }
+
+            $result = $this->wrapTask($task, $process)();
+            $results[] = $result;
+
+            $failureReason = $this->applyResultAndRender($rows, $global, $result);
+
+            if ($failureReason !== null) {
+                throw $failureReason;
+            }
+        }
+
+        foreach ($rows as &$row) {
+            $row['completed'] = ((int) $row['tasks_completed']) >= ((int) $row['tasks_total']);
+        }
+
+        unset($row);
+
+        $this->updateLayout($rows, $global, true);
+
+        return $results;
+    }
+
     private function wrapTask(array $task, Closure $process): Closure
     {
         return function () use ($task, $process): array {
@@ -111,7 +154,7 @@ class ConcurrentProgress
                     'error_context' => $task['error_context'] ?? null,
                     'failed' => false,
                 ];
-            } catch (\Throwable $exception) {
+            } catch (Throwable $exception) {
                 return [
                     'queue' => $task['queue'],
                     'steps' => (int) $task['steps'],
@@ -325,7 +368,7 @@ class ConcurrentProgress
         $this->mergeGlobal($global, is_array($result['global'] ?? null) ? $result['global'] : []);
     }
 
-    private function applyResultAndRender(array &$rows, array &$global, array $result): ?\Throwable
+    private function applyResultAndRender(array &$rows, array &$global, array $result): ?Throwable
     {
         $this->applyResult($rows, $global, $result);
 
@@ -385,8 +428,7 @@ class ConcurrentProgress
         array $global,
         bool $completed = false,
         bool $forceRedraw = false,
-    ): void
-    {
+    ): void {
         if ($this->canRender === false) {
             return;
         }

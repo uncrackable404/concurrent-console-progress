@@ -62,20 +62,20 @@ function setPrivateProperty(object $target, string $property, mixed $value): voi
     })->call($target, $value);
 }
 
-function exceptionWithCallbackTrace(): \RuntimeException
+function exceptionWithCallbackTrace(): RuntimeException
 {
     try {
         throwExceptionFromCallbackTrace(function (): void {});
-    } catch (\RuntimeException $exception) {
+    } catch (RuntimeException $exception) {
         return $exception;
     }
 
-    throw new \RuntimeException('Failed to create test exception');
+    throw new RuntimeException('Failed to create test exception');
 }
 
-function throwExceptionFromCallbackTrace(\Closure $callback): void
+function throwExceptionFromCallbackTrace(Closure $callback): void
 {
-    throw new \RuntimeException('Request failed');
+    throw new RuntimeException('Request failed');
 }
 
 function cleanConsoleLines(string $frame): array

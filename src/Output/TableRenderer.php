@@ -83,5 +83,4 @@ class TableRenderer
     {
         return TerminalSanitizer::trimVisibleText($value, $width);
     }
-
 }

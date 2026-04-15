@@ -40,7 +40,7 @@ $tasks = [
 $results = concurrent(
     queues: ['main' => ['label' => 'Processing']],
     tasks: $tasks,
-    concurrency: 10,
+    concurrent: 10,
     process: function ($task) {
         // Your logic here
         usleep(100000);
@@ -71,7 +71,7 @@ $progress = new ConcurrentProgress();
 $results = $progress->run(
     queues: $queues,
     tasks: $tasks,
-    concurrency: 5,
+    concurrent: 5,
     columns: [
         ['key' => 'label', 'label' => 'ENTITY'],
         ['key' => 'progress', 'label' => 'STATUS'],
@@ -112,10 +112,34 @@ If you are using Laravel, the `ConcurrentProgress` class will automatically dete
 $results = concurrent(
     queues: ['import' => ['label' => 'Importing Data']],
     tasks: $tasks,
-    concurrency: 8,
+    concurrent: 8,
     process: fn($task) => doSomething($task)
 );
 ```
+
+## Synchronous Mode
+
+Set `concurrent: 0` to run all tasks in the same process, without forking. This is useful for debugging with `dd()`, `dump()`, or `xdebug`.
+
+```php
+$results = concurrent(
+    queues: ['main' => ['label' => 'Processing']],
+    tasks: $tasks,
+    concurrent: 0,
+    process: function ($task) {
+        dd($task); // works — same process, no fork
+        return ['advance' => 1];
+    }
+);
+```
+
+The synchronous mode reuses the same rendering, progress tracking, and fail-fast logic as the forked path. The only difference is that tasks run sequentially in the parent process.
+
+| `concurrent` | Behavior |
+|---|---|
+| `0` | Synchronous — no fork, same process |
+| `1` | Forked — one child process at a time |
+| `N` | Forked — up to N child processes in parallel |
 
 ## How it works
 
@@ -124,6 +148,7 @@ This package acts as a bridge between the [**spatie/fork**](https://github.com/s
 - **Process Isolation**: It uses `pcntl_fork` to run each task in its own isolated child process. This means a crash in one task won't affect others, and memory leaks are avoided since each process exits after completion.
 - **Real-time Monitoring**: As tasks complete and send their results back to the parent process, the dashboard updates the table in real-time, providing feedback on progress, ETA, and custom metadata.
 - **Fail-fast**: If a critical error occurs or if you interrupt the process (Ctrl+C), it gracefully shuts down child processes.
+- **Synchronous Mode**: When `concurrent` is set to `0`, tasks run sequentially in the parent process, bypassing `spatie/fork` entirely while preserving the same UI and error handling.
 
 ## License
 

@@ -8,7 +8,7 @@ if (! function_exists('\Uncrackable404\ConcurrentConsoleProgress\concurrent')) {
     function concurrent(
         array $queues,
         array $tasks,
-        int $concurrency,
+        int $concurrent,
         Closure $process,
         array $columns = [],
         array $footer = [],
@@ -17,7 +17,7 @@ if (! function_exists('\Uncrackable404\ConcurrentConsoleProgress\concurrent')) {
         return (new ConcurrentProgress)->run(
             queues: $queues,
             tasks: $tasks,
-            concurrency: $concurrency,
+            concurrent: $concurrent,
             process: $process,
             columns: $columns,
             footer: $footer,

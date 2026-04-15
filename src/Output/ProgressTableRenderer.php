@@ -63,8 +63,7 @@ class ProgressTableRenderer
         array $session,
         int $progressBarWidth,
         int $availableHeight,
-    ): array
-    {
+    ): array {
         $queueRows = [];
 
         foreach (array_values($rows) as $row) {
@@ -379,5 +378,4 @@ class ProgressTableRenderer
             precomputedWidths: $this->stickyWidths,
         );
     }
-
 }
