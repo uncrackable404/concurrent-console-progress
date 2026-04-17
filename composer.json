@@ -11,7 +11,8 @@
     },
     "require-dev": {
         "pestphp/pest": "^4.0",
-        "laravel/pint": "^1.29"
+        "laravel/pint": "^1.29",
+        "nunomaduro/pao": "^0.1.8"
     },
     "autoload": {
         "files": [

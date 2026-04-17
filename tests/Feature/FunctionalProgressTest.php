@@ -4,6 +4,7 @@ use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
 use Uncrackable404\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
+use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
 
 use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
 
@@ -20,18 +21,17 @@ it('completes tasks successfully with real forking', function () {
             ['queue' => 'cars', 'steps' => 1, 'id' => 2],
         ],
         concurrent: 1,
-        process: function (array $task): array {
-            return [
-                'advance' => 1,
-                'meta' => ['processed_id' => $task['id']],
-                'global' => ['last_id' => $task['id']],
-            ];
+        process: function (array $task, ProgressState $state): array {
+            $state->advance('cars', 1);
+            $state->set('last_id', (int) $task['id']);
+
+            return ['processed_id' => (int) $task['id']];
         },
     );
 
     expect($results)->toHaveCount(2)
-        ->and($results[0]['meta']['processed_id'])->toBe(1)
-        ->and($results[1]['meta']['processed_id'])->toBe(2);
+        ->and($results[0])->toBe(['processed_id' => 1])
+        ->and($results[1])->toBe(['processed_id' => 2]);
 
     $frame = $output->fetch();
     expect($frame)->toContain('Cars')
@@ -55,12 +55,12 @@ it('fails and stops early when a task throws an exception', function () {
                 ['queue' => 'cars', 'steps' => 1, 'id' => 2],
             ],
             concurrent: 1,
-            process: function (array $task): array {
+            process: function (array $task, ProgressState $state): void {
                 if ($task['id'] === 1) {
                     throw new RuntimeException('Test failure');
                 }
 
-                return ['advance' => 1];
+                $state->advance('cars', 1);
             },
         );
         $this->fail('Exception not thrown');
@@ -90,20 +90,18 @@ it('runs tasks synchronously in the same process with concurrency 0', function (
             ['queue' => 'cars', 'steps' => 1, 'id' => 2],
         ],
         concurrent: 0,
-        process: function (array $task) use (&$pidsSeen): array {
+        process: function (array $task, ProgressState $state) use (&$pidsSeen): array {
             $pidsSeen[] = getmypid();
+            $state->advance('cars', 1);
+            $state->set('last_id', (int) $task['id']);
 
-            return [
-                'advance' => 1,
-                'meta' => ['processed_id' => $task['id']],
-                'global' => ['last_id' => $task['id']],
-            ];
+            return ['processed_id' => (int) $task['id']];
         },
     );
 
     expect($results)->toHaveCount(2)
-        ->and($results[0]['meta']['processed_id'])->toBe(1)
-        ->and($results[1]['meta']['processed_id'])->toBe(2)
+        ->and($results[0])->toBe(['processed_id' => 1])
+        ->and($results[1])->toBe(['processed_id' => 2])
         ->and($pidsSeen)->each->toBe($parentPid);
 
     $frame = $output->fetch();
@@ -129,12 +127,12 @@ it('fails fast synchronously when a task throws with concurrency 0', function ()
                 ['queue' => 'cars', 'steps' => 1, 'id' => 3],
             ],
             concurrent: 0,
-            process: function (array $task): array {
+            process: function (array $task, ProgressState $state): void {
                 if ($task['id'] === 2) {
                     throw new RuntimeException('Sync failure');
                 }
 
-                return ['advance' => 1];
+                $state->advance('cars', 1);
             },
         );
         $this->fail('Exception not thrown');

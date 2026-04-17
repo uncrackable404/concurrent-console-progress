@@ -227,13 +227,11 @@ it('renders the failed row in red before bubbling the failure', function () {
     invokePrivateMethod($progress, 'startLayout', $rows, []);
     $output->fetch();
 
-    $failureReason = invokePrivateMethod($progress, 'applyResultAndRender', $rows, [], [
+    $failureReason = invokePrivateMethod($progress, 'applyCompletion', $rows, [], [
         'queue' => 'cars',
-        'steps' => 50,
-        'advance' => 0,
-        'meta' => [],
-        'global' => [],
         'failed' => true,
+        'error_context' => 'offset 22500',
+        'result' => null,
         'exception' => [
             'queue' => 'cars',
             'error_context' => 'offset 22500',
@@ -672,19 +670,27 @@ it('wraps and runs a task directly', function () {
     $task = ['queue' => 'cars', 'steps' => 10, 'error_context' => 'batch-1'];
 
     $wrapper = invokePrivateMethod($progress, 'wrapTask', $task, function ($task) {
-        return ['advance' => 5, 'meta' => ['status' => 'halfway'], 'global' => ['overall' => 'starting']];
+        return ['item_id' => 42];
     });
 
     $result = $wrapper();
 
     expect($result)->toBe([
         'queue' => 'cars',
-        'steps' => 10,
-        'advance' => 5,
-        'meta' => ['status' => 'halfway'],
-        'global' => ['overall' => 'starting'],
-        'error_context' => 'batch-1',
         'failed' => false,
+        'result' => ['item_id' => 42],
+    ]);
+
+    $wrapperVoid = invokePrivateMethod($progress, 'wrapTask', $task, function ($task) {
+        // no return — task is void
+    });
+
+    $resultVoid = $wrapperVoid();
+
+    expect($resultVoid)->toBe([
+        'queue' => 'cars',
+        'failed' => false,
+        'result' => null,
     ]);
 
     $wrapperFailing = invokePrivateMethod($progress, 'wrapTask', $task, function ($task) {
@@ -695,6 +701,8 @@ it('wraps and runs a task directly', function () {
 
     expect($resultFailed)->toBeArray()
         ->and($resultFailed['failed'])->toBeTrue()
+        ->and($resultFailed['error_context'])->toBe('batch-1')
+        ->and($resultFailed['result'])->toBeNull()
         ->and($resultFailed['exception'])->toBeArray()
         ->and($resultFailed['exception']['message'])->toBe('Processing failed');
 });
@@ -832,22 +840,27 @@ it('estimates ETA correctly', function () {
     expect(invokePrivateMethod($progress, 'estimateEta', -1, 100, 10))->toBeNull();
 });
 
-it('merges row meta with non-numeric values and ignores unknown queues', function () {
+it('ignores completion results for unknown queues without crashing', function () {
     $progress = new ConcurrentProgress;
-    $rows = ['cars' => ['meta' => ['speed' => 10, 'status' => 'waiting']]];
-
-    // Valid queue, non-numeric value
-    $meta = $rows['cars']['meta'];
-    $incoming = ['speed' => 5, 'status' => 'driving'];
-    (function ($incoming) use (&$meta) {
-        $this->mergeRowMeta($meta, $incoming);
-    })->call($progress, $incoming);
-
-    expect($meta['speed'])->toBe(15)
-        ->and($meta['status'])->toBe('driving');
-
-    // Unknown queue check in applyResult
+    $rows = ['cars' => [
+        'label' => 'cars',
+        'total' => 10,
+        'processed' => 0,
+        'tasks_completed' => 0,
+        'tasks_total' => 2,
+        'meta' => [],
+        'failed' => false,
+        'completed' => false,
+    ]];
     $global = [];
-    invokePrivateMethod($progress, 'applyResult', $rows, $global, ['queue' => 'unknown']);
+
+    $failure = invokePrivateMethod($progress, 'applyCompletion', $rows, $global, [
+        'queue' => 'unknown',
+        'failed' => false,
+        'result' => null,
+    ]);
+
+    expect($failure)->toBeNull();
     expect($rows)->not->toHaveKey('unknown');
+    expect($rows['cars']['tasks_completed'])->toBe(0);
 });

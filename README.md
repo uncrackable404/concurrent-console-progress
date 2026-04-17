@@ -8,13 +8,17 @@
 
 ## Introduction
 
-**Concurrent Console Progress** is a dashboard for monitoring concurrent progress in PHP console applications. Ideal for resource-intensive tasks (imports, API calls) distributed across multiple simultaneous queues.
+**Concurrent Console Progress** is a live dashboard for PHP console applications that run many concurrent tasks across one or more queues. Typical use cases: bulk imports, fan-out API calls, background migrations, and any batch job where you want per-queue progress bars, aggregated counters, and atomic shared state updated in real time.
 
-Inspired by [**laravel/prompts**](https://github.com/laravel/prompts) and powered by [**spatie/fork**](https://github.com/spatie/fork).
+The package is powered by [**spatie/fork**](https://github.com/spatie/fork) for process isolation and inspired by [**laravel/prompts**](https://github.com/laravel/prompts) for terminal rendering.
+
+## Requirements
+
+- PHP `^8.3`
+- `ext-pcntl`, `ext-posix` (Unix-only — macOS, Linux)
+- Works in CLI context only (forking is not available in FPM/Apache)
 
 ## Installation
-
-You can install the package via composer:
 
 ```bash
 composer require uncrackable404/concurrent-console-progress
@@ -22,49 +26,54 @@ composer require uncrackable404/concurrent-console-progress
 
 ## Usage
 
-The package provides a `ConcurrentProgress` class and a `concurrent()` helper.
+The package exposes:
+
+- `Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress` — the main class.
+- `Uncrackable404\ConcurrentConsoleProgress\concurrent()` — a convenience helper around `ConcurrentProgress::run()`.
+- `Uncrackable404\ConcurrentConsoleProgress\ProgressState` — the interface for the shared state your tasks can read and mutate.
 
 ### Minimal Example
 
-A simple usage with a single queue.
+One queue, one counter, no shared state:
 
 ```php
+use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+
 use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
 
-$tasks = [
-    ['queue' => 'main', 'steps' => 1, 'id' => 1],
-    ['queue' => 'main', 'steps' => 1, 'id' => 2],
-    // ...
-];
+$tasks = [];
+for ($i = 1; $i <= 50; $i++) {
+    $tasks[] = ['queue' => 'main', 'steps' => 1, 'id' => $i];
+}
 
-$results = concurrent(
-    queues: ['main' => ['label' => 'Processing']],
+concurrent(
+    queues: ['main' => ['label' => 'Processing', 'total' => count($tasks)]],
     tasks: $tasks,
     concurrent: 10,
-    process: function ($task) {
-        // Your logic here
-        usleep(100000);
-        return ['advance' => 1];
-    }
+    process: function (array $task, ProgressState $state): void {
+        usleep(100_000);
+        $state->advance('main', 1);
+    },
 );
 ```
 
 ### Complete Example
 
-Multiple queues, custom columns, and footer information. This is ideal for complex imports where you want to monitor different entities at once.
+Multiple queues, custom columns, footer values, and free-form return values. Task state (progress, per-row counters, global footer values) flows through the `ProgressState` passed as the second argument — the callback's return value is free-form and is forwarded to the caller as-is.
 
 ```php
 use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
+use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
 
 $queues = [
-    'users' => ['label' => 'Importing Users'],
-    'orders' => ['label' => 'Importing Orders'],
+    'users' => ['label' => 'Importing Users', 'total' => 2],
+    'orders' => ['label' => 'Importing Orders', 'total' => 1],
 ];
 
 $tasks = [
     ['queue' => 'users', 'steps' => 1, 'data' => ['id' => 1, 'name' => 'John']],
+    ['queue' => 'users', 'steps' => 1, 'data' => ['id' => 2, 'name' => 'Jane']],
     ['queue' => 'orders', 'steps' => 1, 'data' => ['id' => 101, 'total' => 50]],
-    // ... more tasks
 ];
 
 $progress = new ConcurrentProgress();
@@ -73,67 +82,116 @@ $results = $progress->run(
     tasks: $tasks,
     concurrent: 5,
     columns: [
-        ['key' => 'label', 'label' => 'ENTITY'],
-        ['key' => 'progress', 'label' => 'STATUS'],
-        ['key' => 'id', 'label' => 'ID'],
         ['key' => 'status', 'label' => 'LAST ITEM'],
     ],
     footer: [
-        ['label' => 'Memory Peak', 'value' => '{memory_peak}'],
-        ['label' => 'Time', 'value' => '{elapsed}'],
+        ['key' => 'memory_peak', 'label' => 'MEMORY PEAK'],
     ],
-    process: function ($task) {
-        // Complex logic (e.g. API call to Podio)
+    process: function (array $task, ProgressState $state): array {
         $id = $task['data']['id'] ?? 'unknown';
-        
-        // Return metadata to be displayed in the dashboard
-        return [
-            'advance' => 1,
-            'meta' => [
-                'id' => $id,
-                'status' => "✅ Processed",
-            ],
-            'global' => [
-                'memory_peak' => memory_get_peak_usage(true),
-            ],
-        ];
+
+        // Per-queue cell (shown in the `status` column).
+        $state->set('status', "✅ Processed #{$id}", queue: $task['queue']);
+
+        // Global footer value — update atomically.
+        $state->transform(
+            'memory_peak',
+            fn (mixed $current): int => max((int) ($current ?? 0), memory_get_peak_usage(true)),
+        );
+
+        // Advance the progress bar by one step for this queue.
+        $state->advance($task['queue'], 1);
+
+        // The return value is free-form and ends up in the $results array.
+        return ['id' => $id];
     }
 );
+
+// $results = [['id' => 1], ['id' => 2], ['id' => 101]]
 ```
+
+### Progress State API
+
+The `ProgressState` interface exposes atomic read/write operations against state owned by the parent process. A `ProgressState` instance is injected into your task callback when the closure signature declares a second parameter:
+
+```php
+interface ProgressState
+{
+    public function get(string $key, ?string $queue = null): mixed;
+    public function set(string $key, mixed $value, ?string $queue = null): void;
+    public function compareAndSet(string $key, mixed $old, mixed $new, ?string $queue = null): bool;
+    public function transform(string $key, Closure $fn, ?string $queue = null): mixed;
+    public function advance(string $queue, int $steps = 1): void;
+    public function increment(string $key, int|float $delta = 1, ?string $queue = null): int|float;
+}
+```
+
+- `advance()` increments the queue's `processed` counter (clamped to `total`) — this is what drives the progress bar.
+- `increment()` is an atomic numeric counter over `$global[$key]` (when `$queue === null`) or `$rows[$queue]['meta'][$key]`.
+- `transform()` applies a closure atomically via a compare-and-set retry loop. The closure receives the current value (or `null` if unset) and returns the new value. Ideal for `min` / `max` aggregations where the result depends on the current value.
+- `get()` returns the stored value or `null`. Use the null-coalescing operator for defaults: `$state->get('credits') ?? 0`.
+- `set()` / `compareAndSet()` are the primitives backing the higher-level helpers.
+
+When `concurrent >= 1` the state lives in the parent process and child tasks communicate with it via a Unix-socket RPC (no state files, no extra extensions). When `concurrent: 0` the state lives in memory of the single process.
+
+Back-compat: the second parameter is optional. Single-argument closures `fn (array $task) => …` still work — you just don't get access to `ProgressState`.
 
 ## Laravel Integration
 
-The package comes with a `ConsoleProgressServiceProvider` that automatically configures the output for Laravel commands.
-
-If you are using Laravel, the `ConcurrentProgress` class will automatically detect the console output. The `concurrent()` helper is also available for a more concise syntax.
+The package ships with `ConsoleProgressServiceProvider`, auto-discovered by Laravel. It wires the command output into the dashboard, so you can use `concurrent()` inside any `Artisan` command with no extra configuration:
 
 ```php
-// In a Laravel Command
-$results = concurrent(
-    queues: ['import' => ['label' => 'Importing Data']],
-    tasks: $tasks,
-    concurrent: 8,
-    process: fn($task) => doSomething($task)
-);
+use Illuminate\Console\Command;
+use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+
+use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+
+class ImportUsers extends Command
+{
+    protected $signature = 'users:import';
+
+    public function handle(): int
+    {
+        $tasks = User::cursor()->map(fn ($user) => [
+            'queue' => 'users',
+            'steps' => 1,
+            'id' => $user->id,
+        ])->all();
+
+        concurrent(
+            queues: ['users' => ['label' => 'Users', 'total' => count($tasks)]],
+            tasks: $tasks,
+            concurrent: 8,
+            process: function (array $task, ProgressState $state): void {
+                // your work here
+                $state->advance('users', 1);
+            },
+        );
+
+        return self::SUCCESS;
+    }
+}
 ```
 
 ## Synchronous Mode
 
-Set `concurrent: 0` to run all tasks in the same process, without forking. This is useful for debugging with `dd()`, `dump()`, or `xdebug`.
+Set `concurrent: 0` to run all tasks sequentially in the same process, bypassing `spatie/fork` entirely. The rendering, state, and fail-fast logic are unchanged — only the execution is serial. Useful when debugging with `dd()`, `dump()`, or `xdebug`:
 
 ```php
-$results = concurrent(
-    queues: ['main' => ['label' => 'Processing']],
-    tasks: $tasks,
+use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+
+use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+
+concurrent(
+    queues: ['main' => ['label' => 'Processing', 'total' => 1]],
+    tasks: [['queue' => 'main', 'steps' => 1]],
     concurrent: 0,
-    process: function ($task) {
+    process: function (array $task, ProgressState $state): void {
         dd($task); // works — same process, no fork
-        return ['advance' => 1];
-    }
+        $state->advance('main', 1);
+    },
 );
 ```
-
-The synchronous mode reuses the same rendering, progress tracking, and fail-fast logic as the forked path. The only difference is that tasks run sequentially in the parent process.
 
 | `concurrent` | Behavior |
 |---|---|
@@ -141,14 +199,13 @@ The synchronous mode reuses the same rendering, progress tracking, and fail-fast
 | `1` | Forked — one child process at a time |
 | `N` | Forked — up to N child processes in parallel |
 
-## How it works
+## How It Works
 
-This package acts as a bridge between the [**spatie/fork**](https://github.com/spatie/fork) engine and a responsive console UI.
-
-- **Process Isolation**: It uses `pcntl_fork` to run each task in its own isolated child process. This means a crash in one task won't affect others, and memory leaks are avoided since each process exits after completion.
-- **Real-time Monitoring**: As tasks complete and send their results back to the parent process, the dashboard updates the table in real-time, providing feedback on progress, ETA, and custom metadata.
-- **Fail-fast**: If a critical error occurs or if you interrupt the process (Ctrl+C), it gracefully shuts down child processes.
-- **Synchronous Mode**: When `concurrent` is set to `0`, tasks run sequentially in the parent process, bypassing `spatie/fork` entirely while preserving the same UI and error handling.
+- **Process isolation.** Each task runs in its own child process via `pcntl_fork` (through `spatie/fork`). A crash in one task does not affect the others, and memory leaks are bounded because every child exits after completion.
+- **Parent-owned shared state.** `ProgressState` lives only in the parent. Children talk to it over a Unix-domain socket created in the system temp directory; no state file is ever written to disk. Operations (`get`, `set`, `compareAndSet`, `advance`, …) are synchronous RPC calls.
+- **Real-time rendering.** After each state mutation the child wakes the parent with `SIGUSR1`; the parent drains the pending RPC, re-renders the dashboard, and returns. Frame throttling prevents flicker under rapid updates.
+- **Atomic aggregations.** `transform()` runs a compare-and-set retry loop against the parent, so `min` / `max` / custom reducers work correctly even with many forked tasks updating the same key concurrently.
+- **Fail-fast.** If any task throws, the parent tears down all running children and re-throws a snapshot exception with the original file, line, and trace preserved.
 
 ## License
 

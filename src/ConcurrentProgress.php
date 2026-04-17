@@ -3,14 +3,17 @@
 namespace Uncrackable404\ConcurrentConsoleProgress;
 
 use Closure;
+use ReflectionFunction;
 use Symfony\Component\Console\Cursor;
 use Symfony\Component\Console\Output\ConsoleOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
 use Uncrackable404\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
 use Uncrackable404\ConcurrentConsoleProgress\Output\ProgressTableRenderer;
+use Uncrackable404\ConcurrentConsoleProgress\State\InMemoryProgressState;
+use Uncrackable404\ConcurrentConsoleProgress\State\ParentStateServer;
+use Uncrackable404\ConcurrentConsoleProgress\State\RpcProgressState;
 use Uncrackable404\ConcurrentConsoleProgress\Support\FailFastFork;
-use Uncrackable404\ConcurrentConsoleProgress\Support\Value;
 
 class ConcurrentProgress
 {
@@ -68,36 +71,77 @@ class ConcurrentProgress
 
         $this->startLayout($rows, $global);
 
-        $fork = (new FailFastFork)
-            ->concurrent(max(1, $concurrent))
-            ->before($before);
-
-        $fork->after(
-            parent: function (array $result) use (&$rows, &$global, $fork): void {
-                $failureReason = $this->applyResultAndRender($rows, $global, $result);
-
-                if ($failureReason !== null) {
-                    $fork->fail($failureReason);
-                }
+        $socketPath = $this->makeSocketPath();
+        $server = new ParentStateServer(
+            $socketPath,
+            $rows,
+            $global,
+            onChange: function () use (&$rows, &$global): void {
+                $this->updateLayout($rows, $global, forceRedraw: true);
             },
         );
+        $server->listen();
+        $serverResource = $server->serverResource();
+        $parentPid = (int) getmypid();
+        $state = new RpcProgressState($socketPath, $parentPid);
 
-        $results = $fork->run(
-            ...array_map(
-                fn (array $task): Closure => $this->wrapTask($task, $process),
-                $tasks,
-            )
-        );
+        $servicing = false;
+        pcntl_async_signals(true);
+        pcntl_signal(SIGUSR1, function () use ($server, &$servicing): void {
+            if ($servicing) {
+                return;
+            }
+            $servicing = true;
+            try {
+                $server->service();
+            } finally {
+                $servicing = false;
+            }
+        });
 
-        foreach ($rows as &$row) {
-            $row['completed'] = ((int) $row['tasks_completed']) >= ((int) $row['tasks_total']);
+        try {
+            $fork = (new FailFastFork)
+                ->concurrent(max(1, $concurrent))
+                ->before($before);
+
+            $fork->after(
+                parent: function (array $result) use (&$rows, &$global, $fork, $server): void {
+                    $server->service();
+                    $failureReason = $this->applyCompletion($rows, $global, $result);
+
+                    if ($failureReason !== null) {
+                        $fork->fail($failureReason);
+                    }
+                },
+            );
+
+            $results = $fork->run(
+                ...array_map(
+                    fn (array $task): Closure => $this->wrapTask(
+                        $task,
+                        $process,
+                        $state,
+                        $serverResource,
+                    ),
+                    $tasks,
+                )
+            );
+
+            foreach ($rows as &$row) {
+                $row['completed'] = ((int) $row['tasks_completed']) >= ((int) $row['tasks_total']);
+            }
+
+            unset($row);
+
+            $server->service();
+
+            $this->updateLayout($rows, $global, true);
+
+            return array_map(static fn (array $result): mixed => $result['result'] ?? null, $results);
+        } finally {
+            pcntl_signal(SIGUSR1, SIG_DFL);
+            $server->shutdown();
         }
-
-        unset($row);
-
-        $this->updateLayout($rows, $global, true);
-
-        return $results;
     }
 
     private function runSynchronously(
@@ -111,6 +155,14 @@ class ConcurrentProgress
 
         $this->startLayout($rows, $global);
 
+        $state = new InMemoryProgressState(
+            $rows,
+            $global,
+            onChange: function () use (&$rows, &$global): void {
+                $this->updateLayout($rows, $global, forceRedraw: true);
+            },
+        );
+
         $results = [];
 
         foreach ($tasks as $task) {
@@ -118,10 +170,10 @@ class ConcurrentProgress
                 $before();
             }
 
-            $result = $this->wrapTask($task, $process)();
+            $result = $this->wrapTask($task, $process, $state)();
             $results[] = $result;
 
-            $failureReason = $this->applyResultAndRender($rows, $global, $result);
+            $failureReason = $this->applyCompletion($rows, $global, $result);
 
             if ($failureReason !== null) {
                 throw $failureReason;
@@ -136,37 +188,61 @@ class ConcurrentProgress
 
         $this->updateLayout($rows, $global, true);
 
-        return $results;
+        return array_map(static fn (array $result): mixed => $result['result'] ?? null, $results);
     }
 
-    private function wrapTask(array $task, Closure $process): Closure
-    {
-        return function () use ($task, $process): array {
+    private function wrapTask(
+        array $task,
+        Closure $process,
+        ?ProgressState $state = null,
+        mixed $serverResource = null,
+    ): Closure {
+        $acceptsState = $state !== null && $this->processAcceptsState($process);
+
+        return function () use ($task, $process, $state, $serverResource, $acceptsState): array {
+            if ($serverResource !== null) {
+                if (is_resource($serverResource)) {
+                    @fclose($serverResource);
+                }
+                if (function_exists('pcntl_signal')) {
+                    @pcntl_signal(SIGUSR1, SIG_IGN);
+                }
+            }
+
             try {
-                $result = $process($task);
+                $userResult = $acceptsState ? $process($task, $state) : $process($task);
 
                 return [
                     'queue' => $task['queue'],
-                    'steps' => (int) $task['steps'],
-                    'advance' => (int) ($result['advance'] ?? $result['processed'] ?? $task['steps']),
-                    'meta' => is_array($result['meta'] ?? null) ? $result['meta'] : ($result['row_meta'] ?? []),
-                    'global' => is_array($result['global'] ?? null) ? $result['global'] : ($result['global_meta'] ?? []),
-                    'error_context' => $task['error_context'] ?? null,
                     'failed' => false,
+                    'result' => $userResult,
                 ];
             } catch (Throwable $exception) {
                 return [
                     'queue' => $task['queue'],
-                    'steps' => (int) $task['steps'],
-                    'advance' => 0,
-                    'meta' => [],
-                    'global' => [],
-                    'error_context' => $task['error_context'] ?? null,
                     'failed' => true,
+                    'error_context' => $task['error_context'] ?? null,
                     'exception' => ChildProcessException::snapshotException($task, $exception),
+                    'result' => null,
                 ];
             }
         };
+    }
+
+    private function processAcceptsState(Closure $process): bool
+    {
+        try {
+            return (new ReflectionFunction($process))->getNumberOfParameters() >= 2;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function makeSocketPath(): string
+    {
+        return sys_get_temp_dir()
+            . DIRECTORY_SEPARATOR
+            . 'ccp-' . getmypid() . '-' . uniqid('', true) . '.sock';
     }
 
     private function normalizeColumns(array $columns, array $queues, array $tasks): array
@@ -348,29 +424,15 @@ class ConcurrentProgress
         return $rows;
     }
 
-    private function applyResult(array &$rows, array &$global, array $result): void
+    private function applyCompletion(array &$rows, array $global, array $result): ?Throwable
     {
-        $key = (string) $result['queue'];
+        $queue = (string) ($result['queue'] ?? '');
 
-        if (array_key_exists($key, $rows) === false) {
-            return;
+        if ($queue !== '' && array_key_exists($queue, $rows)) {
+            $rows[$queue]['tasks_completed']++;
+            $rows[$queue]['failed'] = $rows[$queue]['failed'] || (($result['failed'] ?? false) === true);
+            $rows[$queue]['completed'] = $rows[$queue]['tasks_completed'] >= $rows[$queue]['tasks_total'];
         }
-
-        $rows[$key]['processed'] += min(
-            (int) ($result['advance'] ?? 0),
-            (int) ($result['steps'] ?? 0),
-        );
-        $rows[$key]['tasks_completed']++;
-        $rows[$key]['failed'] = $rows[$key]['failed'] || (($result['failed'] ?? false) === true);
-        $rows[$key]['completed'] = $rows[$key]['tasks_completed'] >= $rows[$key]['tasks_total'];
-
-        $this->mergeRowMeta($rows[$key]['meta'], is_array($result['meta'] ?? null) ? $result['meta'] : []);
-        $this->mergeGlobal($global, is_array($result['global'] ?? null) ? $result['global'] : []);
-    }
-
-    private function applyResultAndRender(array &$rows, array &$global, array $result): ?Throwable
-    {
-        $this->applyResult($rows, $global, $result);
 
         if (($result['failed'] ?? false) === true) {
             $this->updateLayout($rows, $global, forceRedraw: true);
@@ -381,30 +443,6 @@ class ConcurrentProgress
         $this->updateLayout($rows, $global);
 
         return null;
-    }
-
-    private function mergeRowMeta(array &$current, array $incoming): void
-    {
-        foreach ($incoming as $key => $value) {
-            if (is_int($value) || is_float($value)) {
-                $current[$key] = (int) ($current[$key] ?? 0) + (int) $value;
-
-                continue;
-            }
-
-            if (Value::filled($value)) {
-                $current[$key] = $value;
-            }
-        }
-    }
-
-    private function mergeGlobal(array &$current, array $incoming): void
-    {
-        foreach ($incoming as $key => $value) {
-            if (Value::filled($value)) {
-                $current[$key] = $value;
-            }
-        }
     }
 
     private function startLayout(array $rows, array $global): void
