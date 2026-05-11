@@ -86,6 +86,7 @@ class ConcurrentProgress
         $state = new RpcProgressState($socketPath, $parentPid);
 
         $servicing = false;
+        $previousSigusr1Handler = pcntl_signal_get_handler(SIGUSR1);
         pcntl_async_signals(true);
         pcntl_signal(SIGUSR1, function () use ($server, &$servicing): void {
             if ($servicing) {
@@ -139,8 +140,9 @@ class ConcurrentProgress
 
             return array_map(static fn (array $result): mixed => $result['result'] ?? null, $results);
         } finally {
-            pcntl_signal(SIGUSR1, SIG_DFL);
+            pcntl_signal(SIGUSR1, SIG_IGN);
             $server->shutdown();
+            pcntl_signal(SIGUSR1, $previousSigusr1Handler ?: SIG_DFL);
         }
     }
 
