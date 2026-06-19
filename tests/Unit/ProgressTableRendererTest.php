@@ -1,7 +1,7 @@
 <?php
 
 use Symfony\Component\Console\Terminal;
-use Uncrackable404\ConcurrentConsoleProgress\Output\ProgressTableRenderer;
+use KarimTao\ConcurrentConsoleProgress\Output\ProgressTableRenderer;
 
 it('limits the number of visible rows based on terminal height', function () {
     $renderer = new ProgressTableRenderer(

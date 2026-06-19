@@ -2,9 +2,9 @@
 
 ![Concurrent Console Progress Preview](art/preview.png)
 
-[![Total Downloads](https://img.shields.io/packagist/dt/uncrackable404/concurrent-console-progress)](https://packagist.org/packages/uncrackable404/concurrent-console-progress)
-[![Latest Stable Version](https://img.shields.io/packagist/v/uncrackable404/concurrent-console-progress)](https://packagist.org/packages/uncrackable404/concurrent-console-progress)
-[![License](https://img.shields.io/packagist/l/uncrackable404/concurrent-console-progress)](https://packagist.org/packages/uncrackable404/concurrent-console-progress)
+[![Total Downloads](https://img.shields.io/packagist/dt/karim-tao/concurrent-console-progress)](https://packagist.org/packages/karim-tao/concurrent-console-progress)
+[![Latest Stable Version](https://img.shields.io/packagist/v/karim-tao/concurrent-console-progress)](https://packagist.org/packages/karim-tao/concurrent-console-progress)
+[![License](https://img.shields.io/packagist/l/karim-tao/concurrent-console-progress)](https://packagist.org/packages/karim-tao/concurrent-console-progress)
 
 ## Introduction
 
@@ -21,25 +21,25 @@ The package is powered by [**spatie/fork**](https://github.com/spatie/fork) for 
 ## Installation
 
 ```bash
-composer require uncrackable404/concurrent-console-progress
+composer require karim-tao/concurrent-console-progress
 ```
 
 ## Usage
 
 The package exposes:
 
-- `Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress` — the main class.
-- `Uncrackable404\ConcurrentConsoleProgress\concurrent()` — a convenience helper around `ConcurrentProgress::run()`.
-- `Uncrackable404\ConcurrentConsoleProgress\ProgressState` — the interface for the shared state your tasks can read and mutate.
+- `KarimTao\ConcurrentConsoleProgress\ConcurrentProgress` — the main class.
+- `KarimTao\ConcurrentConsoleProgress\concurrent()` — a convenience helper around `ConcurrentProgress::run()`.
+- `KarimTao\ConcurrentConsoleProgress\ProgressState` — the interface for the shared state your tasks can read and mutate.
 
 ### Minimal Example
 
 One queue, one counter, no shared state:
 
 ```php
-use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+use KarimTao\ConcurrentConsoleProgress\ProgressState;
 
-use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+use function KarimTao\ConcurrentConsoleProgress\concurrent;
 
 $tasks = [];
 for ($i = 1; $i <= 50; $i++) {
@@ -62,8 +62,8 @@ concurrent(
 Multiple queues, custom columns, footer values, and free-form return values. Task state (progress, per-row counters, global footer values) flows through the `ProgressState` passed as the second argument — the callback's return value is free-form and is forwarded to the caller as-is.
 
 ```php
-use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
-use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+use KarimTao\ConcurrentConsoleProgress\ConcurrentProgress;
+use KarimTao\ConcurrentConsoleProgress\ProgressState;
 
 $queues = [
     'users' => ['label' => 'Importing Users', 'total' => 2],
@@ -142,9 +142,9 @@ The package ships with `ConsoleProgressServiceProvider`, auto-discovered by Lara
 
 ```php
 use Illuminate\Console\Command;
-use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+use KarimTao\ConcurrentConsoleProgress\ProgressState;
 
-use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+use function KarimTao\ConcurrentConsoleProgress\concurrent;
 
 class ImportUsers extends Command
 {
@@ -178,9 +178,9 @@ class ImportUsers extends Command
 Set `concurrent: 0` to run all tasks sequentially in the same process, bypassing `spatie/fork` entirely. The rendering, state, and fail-fast logic are unchanged — only the execution is serial. Useful when debugging with `dd()`, `dump()`, or `xdebug`:
 
 ```php
-use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+use KarimTao\ConcurrentConsoleProgress\ProgressState;
 
-use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+use function KarimTao\ConcurrentConsoleProgress\concurrent;
 
 concurrent(
     queues: ['main' => ['label' => 'Processing', 'total' => 1]],

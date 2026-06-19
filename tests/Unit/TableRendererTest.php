@@ -1,6 +1,6 @@
 <?php
 
-use Uncrackable404\ConcurrentConsoleProgress\Output\TableRenderer;
+use KarimTao\ConcurrentConsoleProgress\Output\TableRenderer;
 
 it('trims values to empty string when width is zero or less', function () {
     $renderer = new TableRenderer([]);

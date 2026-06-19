@@ -1,6 +1,6 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress;
+namespace KarimTao\ConcurrentConsoleProgress;
 
 use Closure;
 

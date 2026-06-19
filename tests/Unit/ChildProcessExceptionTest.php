@@ -1,6 +1,6 @@
 <?php
 
-use Uncrackable404\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
+use KarimTao\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
 
 it('creates an exception from a simple result array', function () {
     $result = [

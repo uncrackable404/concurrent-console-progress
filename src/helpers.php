@@ -1,10 +1,10 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress;
+namespace KarimTao\ConcurrentConsoleProgress;
 
 use Closure;
 
-if (! function_exists('\Uncrackable404\ConcurrentConsoleProgress\concurrent')) {
+if (! function_exists('\KarimTao\ConcurrentConsoleProgress\concurrent')) {
     function concurrent(
         array $queues,
         array $tasks,

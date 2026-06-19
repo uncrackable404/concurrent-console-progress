@@ -2,10 +2,10 @@
 
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
-use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
-use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+use KarimTao\ConcurrentConsoleProgress\ConcurrentProgress;
+use KarimTao\ConcurrentConsoleProgress\ProgressState;
 
-use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+use function KarimTao\ConcurrentConsoleProgress\concurrent;
 
 final class RecordingOutput extends BufferedOutput
 {

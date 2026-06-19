@@ -1,6 +1,6 @@
 <?php
 
-use Uncrackable404\ConcurrentConsoleProgress\Output\ColumnLayout;
+use KarimTao\ConcurrentConsoleProgress\Output\ColumnLayout;
 
 it('shrinks columns to their minimum width when overflowing', function () {
     $layout = new ColumnLayout;

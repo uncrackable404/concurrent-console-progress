@@ -1,5 +1,5 @@
 {
-    "name": "uncrackable404/concurrent-console-progress",
+    "name": "karim-tao/concurrent-console-progress",
     "description": "Concurrent progress dashboard for PHP console applications that need to render and monitor multiple concurrent tasks in a single live terminal view.",
     "type": "library",
     "license": "MIT",
@@ -19,7 +19,7 @@
             "src/helpers.php"
         ],
         "psr-4": {
-            "Uncrackable404\\ConcurrentConsoleProgress\\": "src/"
+            "KarimTao\\ConcurrentConsoleProgress\\": "src/"
         }
     },
     "autoload-dev": {
@@ -30,7 +30,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Uncrackable404\\ConcurrentConsoleProgress\\ConsoleProgressServiceProvider"
+                "KarimTao\\ConcurrentConsoleProgress\\ConsoleProgressServiceProvider"
             ]
         }
     },

@@ -1,11 +1,11 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress\Exceptions;
+namespace KarimTao\ConcurrentConsoleProgress\Exceptions;
 
 use RuntimeException;
 use Throwable;
-use Uncrackable404\ConcurrentConsoleProgress\Support\TerminalSanitizer;
-use Uncrackable404\ConcurrentConsoleProgress\Support\Value;
+use KarimTao\ConcurrentConsoleProgress\Support\TerminalSanitizer;
+use KarimTao\ConcurrentConsoleProgress\Support\Value;
 
 class ChildProcessException extends RuntimeException
 {

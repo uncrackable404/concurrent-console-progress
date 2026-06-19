@@ -1,9 +1,9 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress\State;
+namespace KarimTao\ConcurrentConsoleProgress\State;
 
 use Closure;
-use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+use KarimTao\ConcurrentConsoleProgress\ProgressState;
 
 class InMemoryProgressState implements ProgressState
 {

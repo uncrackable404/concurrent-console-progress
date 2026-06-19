@@ -1,6 +1,6 @@
 <?php
 
-use Uncrackable404\ConcurrentConsoleProgress\State\InMemoryProgressState;
+use KarimTao\ConcurrentConsoleProgress\State\InMemoryProgressState;
 
 function makeInMemoryRowsAndGlobal(): array
 {

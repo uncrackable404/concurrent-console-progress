@@ -2,11 +2,11 @@
 
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
-use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
-use Uncrackable404\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
-use Uncrackable404\ConcurrentConsoleProgress\ProgressState;
+use KarimTao\ConcurrentConsoleProgress\ConcurrentProgress;
+use KarimTao\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
+use KarimTao\ConcurrentConsoleProgress\ProgressState;
 
-use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+use function KarimTao\ConcurrentConsoleProgress\concurrent;
 
 it('completes tasks successfully with real forking', function () {
     $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);

@@ -1,7 +1,7 @@
 <?php
 
-use Uncrackable404\ConcurrentConsoleProgress\State\ParentStateServer;
-use Uncrackable404\ConcurrentConsoleProgress\State\RpcProgressState;
+use KarimTao\ConcurrentConsoleProgress\State\ParentStateServer;
+use KarimTao\ConcurrentConsoleProgress\State\RpcProgressState;
 
 function makeRpcTestSocketPath(): string
 {

@@ -1,8 +1,8 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress\Output;
+namespace KarimTao\ConcurrentConsoleProgress\Output;
 
-use Uncrackable404\ConcurrentConsoleProgress\Support\TerminalSanitizer;
+use KarimTao\ConcurrentConsoleProgress\Support\TerminalSanitizer;
 
 class ColumnLayout
 {

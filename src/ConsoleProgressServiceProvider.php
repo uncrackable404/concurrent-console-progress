@@ -1,6 +1,6 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress;
+namespace KarimTao\ConcurrentConsoleProgress;
 
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;

@@ -1,6 +1,6 @@
 <?php
 
-use Uncrackable404\ConcurrentConsoleProgress\Support\FailFastFork;
+use KarimTao\ConcurrentConsoleProgress\Support\FailFastFork;
 
 it('throws a RuntimeException when failed with a string reason', function () {
     $fork = new FailFastFork;

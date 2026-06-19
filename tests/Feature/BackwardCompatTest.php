@@ -2,9 +2,9 @@
 
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
-use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
+use KarimTao\ConcurrentConsoleProgress\ConcurrentProgress;
 
-use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+use function KarimTao\ConcurrentConsoleProgress\concurrent;
 
 it('accepts single-argument closures in fork mode (state is optional)', function () {
     $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);

@@ -1,6 +1,6 @@
 <?php
 
-use Uncrackable404\ConcurrentConsoleProgress\State\ParentStateServer;
+use KarimTao\ConcurrentConsoleProgress\State\ParentStateServer;
 
 function makeServerSocketPath(): string
 {

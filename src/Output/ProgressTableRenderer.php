@@ -1,10 +1,10 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress\Output;
+namespace KarimTao\ConcurrentConsoleProgress\Output;
 
 use Symfony\Component\Console\Terminal;
-use Uncrackable404\ConcurrentConsoleProgress\Support\TerminalSanitizer;
-use Uncrackable404\ConcurrentConsoleProgress\Support\Value;
+use KarimTao\ConcurrentConsoleProgress\Support\TerminalSanitizer;
+use KarimTao\ConcurrentConsoleProgress\Support\Value;
 
 class ProgressTableRenderer
 {

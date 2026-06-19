@@ -3,11 +3,11 @@
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Terminal;
-use Uncrackable404\ConcurrentConsoleProgress\ConcurrentProgress;
-use Uncrackable404\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
-use Uncrackable404\ConcurrentConsoleProgress\Output\ProgressTableRenderer;
+use KarimTao\ConcurrentConsoleProgress\ConcurrentProgress;
+use KarimTao\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
+use KarimTao\ConcurrentConsoleProgress\Output\ProgressTableRenderer;
 
-use function Uncrackable404\ConcurrentConsoleProgress\concurrent;
+use function KarimTao\ConcurrentConsoleProgress\concurrent;
 
 it('runs concurrent progress through the helper entrypoint', function () {
     $output = new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, true);

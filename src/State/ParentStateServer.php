@@ -1,6 +1,6 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress\State;
+namespace KarimTao\ConcurrentConsoleProgress\State;
 
 use Closure;
 use RuntimeException;

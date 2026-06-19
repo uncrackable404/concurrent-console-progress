@@ -1,6 +1,6 @@
 <?php
 
-use Uncrackable404\ConcurrentConsoleProgress\Support\Value;
+use KarimTao\ConcurrentConsoleProgress\Support\Value;
 
 it('determines if a value is filled correctly', function () {
     expect(Value::filled(null))->toBeFalse()

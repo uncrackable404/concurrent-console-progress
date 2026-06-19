@@ -1,6 +1,6 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress;
+namespace KarimTao\ConcurrentConsoleProgress;
 
 use Closure;
 use ReflectionFunction;
@@ -8,12 +8,12 @@ use Symfony\Component\Console\Cursor;
 use Symfony\Component\Console\Output\ConsoleOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
-use Uncrackable404\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
-use Uncrackable404\ConcurrentConsoleProgress\Output\ProgressTableRenderer;
-use Uncrackable404\ConcurrentConsoleProgress\State\InMemoryProgressState;
-use Uncrackable404\ConcurrentConsoleProgress\State\ParentStateServer;
-use Uncrackable404\ConcurrentConsoleProgress\State\RpcProgressState;
-use Uncrackable404\ConcurrentConsoleProgress\Support\FailFastFork;
+use KarimTao\ConcurrentConsoleProgress\Exceptions\ChildProcessException;
+use KarimTao\ConcurrentConsoleProgress\Output\ProgressTableRenderer;
+use KarimTao\ConcurrentConsoleProgress\State\InMemoryProgressState;
+use KarimTao\ConcurrentConsoleProgress\State\ParentStateServer;
+use KarimTao\ConcurrentConsoleProgress\State\RpcProgressState;
+use KarimTao\ConcurrentConsoleProgress\Support\FailFastFork;
 
 class ConcurrentProgress
 {

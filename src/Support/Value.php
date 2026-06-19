@@ -1,6 +1,6 @@
 <?php
 
-namespace Uncrackable404\ConcurrentConsoleProgress\Support;
+namespace KarimTao\ConcurrentConsoleProgress\Support;
 
 use Countable;
 use Stringable;
