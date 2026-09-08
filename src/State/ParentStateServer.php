@@ -21,6 +21,8 @@ class ParentStateServer
 
     private bool $changed = false;
 
+    private bool $servicing = false;
+
     public function __construct(
         private string $socketPath,
         array &$rows,
@@ -73,12 +75,18 @@ class ParentStateServer
 
     public function service(): void
     {
-        if ($this->server === null) {
+        if ($this->server === null || $this->servicing) {
             return;
         }
 
-        $this->acceptClients();
-        $this->processClients();
+        $this->servicing = true;
+
+        try {
+            $this->acceptClients();
+            $this->processClients();
+        } finally {
+            $this->servicing = false;
+        }
 
         if ($this->changed) {
             $this->changed = false;
@@ -137,6 +145,12 @@ class ParentStateServer
     private function processClients(): void
     {
         foreach ($this->clients as $id => $client) {
+            if (! is_resource($client)) {
+                unset($this->clients[$id], $this->buffers[$id]);
+
+                continue;
+            }
+
             $chunk = @fread($client, 8192);
 
             if ($chunk !== false && $chunk !== '') {

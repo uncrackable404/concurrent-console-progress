@@ -9,6 +9,15 @@ function makeServerSocketPath(): string
         . 'ccp-test-' . getmypid() . '-' . uniqid('', true) . '.sock';
 }
 
+function sendRpcWhileServicing(ParentStateServer $server, mixed $client, array $request): array
+{
+    fwrite($client, json_encode($request) . "\n");
+
+    $server->service();
+
+    return json_decode(fgets($client), true);
+}
+
 function sendRpc(mixed $client, array $request): array
 {
     fwrite($client, json_encode($request) . "\n");
@@ -258,6 +267,78 @@ it('triggers onChange after successful mutations only', function () {
         fclose($client);
 
         expect($changes)->toBe(2);
+    } finally {
+        $server->shutdown();
+    }
+});
+
+it('ignores a re-entrant service call', function () {
+    $socketPath = makeServerSocketPath();
+    $rows = [];
+    $global = [];
+    $calls = 0;
+
+    $server = new ParentStateServer(
+        $socketPath,
+        $rows,
+        $global,
+        onChange: function () use (&$server, &$calls): void {
+            $calls++;
+            $server->service();
+        },
+    );
+    $server->listen();
+
+    try {
+        $client = stream_socket_client('unix://' . $socketPath);
+        stream_set_blocking($client, true);
+
+        expect(sendRpcWhileServicing($server, $client, ['op' => 'set', 'id' => 1, 'key' => 'k', 'value' => 1, 'queue' => null]))->toBe(['id' => 1, 'ok' => true]);
+        expect($calls)->toBe(1);
+
+        fclose($client);
+    } finally {
+        $server->shutdown();
+    }
+});
+
+it('drops a client whose stream was closed under its feet', function () {
+    $socketPath = makeServerSocketPath();
+    $rows = [];
+    $global = [];
+
+    $server = new ParentStateServer(
+        $socketPath,
+        $rows,
+        $global,
+        onChange: fn () => null,
+    );
+    $server->listen();
+
+    try {
+        $closed = stream_socket_client('unix://' . $socketPath);
+        $alive = stream_socket_client('unix://' . $socketPath);
+        stream_set_blocking($alive, true);
+
+        $server->service();
+
+        $clients = new ReflectionProperty($server, 'clients');
+
+        foreach ($clients->getValue($server) as $stream) {
+            fclose($stream);
+
+            break;
+        }
+
+        fwrite($alive, json_encode(['op' => 'get', 'id' => 2, 'key' => 'k', 'queue' => null]) . "\n");
+
+        $server->service();
+
+        expect(json_decode(fgets($alive), true))->toBe(['id' => 2, 'value' => null])
+            ->and($clients->getValue($server))->toHaveCount(1);
+
+        fclose($closed);
+        fclose($alive);
     } finally {
         $server->shutdown();
     }
